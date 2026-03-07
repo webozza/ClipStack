@@ -908,7 +908,7 @@ function createTray() {
 
   tray.on("click", () => toggleWindow());
 
-  tray.setContextMenu(Menu.buildFromTemplate([
+  const contextMenu = Menu.buildFromTemplate([
     { label: "Show/Hide", click: () => toggleWindow() },
     { type: "separator" },
     {
@@ -917,6 +917,10 @@ function createTray() {
         app.quit();
       }
     }
-  ]));
+  ]);
+
+  tray.on("right-click", () => {
+    tray.popUpContextMenu(contextMenu);
+  });
 }
 
