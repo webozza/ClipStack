@@ -1,0 +1,322 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:;" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClipStack</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ═══ ONBOARDING ═══ -->
+  <div id="onboarding" class="onboarding hidden">
+    <div class="onboarding-card">
+      <div class="onboarding-logo">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      </div>
+      <h1>Welcome to ClipStack</h1>
+      <p>Your intelligent clipboard manager for professionals.</p>
+      <div class="onboarding-steps">
+        <div class="o-step"><div class="o-icon">⌘⇧V</div><div><strong>Open Anywhere</strong><span>Press to open ClipStack</span></div></div>
+        <div class="o-step"><div class="o-icon">↵</div><div><strong>Paste Instantly</strong><span>Click or Enter to paste</span></div></div>
+        <div class="o-step"><div class="o-icon">🔍</div><div><strong>Search Clips</strong><span>Find anything instantly</span></div></div>
+      </div>
+      <button id="onboarding-btn" class="btn-primary btn-lg">Get Started →</button>
+    </div>
+  </div>
+
+  <!-- ═══ IMAGE PREVIEW MODAL ═══ -->
+  <div id="img-preview-modal" class="modal-overlay hidden">
+    <div class="modal-backdrop" id="img-preview-backdrop"></div>
+    <div class="img-preview-content">
+      <button class="modal-x" id="img-preview-close">✕</button>
+      <img id="img-preview-img" src="" alt="Preview" />
+      <div id="img-preview-info" class="img-preview-info"></div>
+    </div>
+  </div>
+
+  <!-- ═══ SUBSCRIPTION MODAL ═══ -->
+  <div id="subscription-modal" class="modal-overlay hidden">
+    <div class="modal-backdrop" id="sub-modal-backdrop"></div>
+    <div class="modal-card sub-modal">
+      <div class="modal-hdr">
+        <div>
+          <h2>Upgrade ClipStack</h2>
+          <p class="modal-sub">Unlock the full power of your clipboard</p>
+        </div>
+        <button class="modal-x" id="sub-modal-close">✕</button>
+      </div>
+      <div class="plans-grid">
+        <div class="plan-card" id="plan-free">
+          <div class="plan-name">Free</div>
+          <div class="plan-price">$0<span>/mo</span></div>
+          <ul class="plan-features">
+            <li class="ok">50 clipboard items</li>
+            <li class="ok">Text &amp; image capture</li>
+            <li class="ok">Pin items</li>
+            <li class="no">Cloud sync</li>
+            <li class="no">Snippets library</li>
+            <li class="no">Sensitive masking</li>
+            <li class="no">Text transforms</li>
+          </ul>
+          <button class="plan-btn outline" disabled id="plan-free-btn">Current Plan</button>
+        </div>
+        <div class="plan-card plan-pro" id="plan-pro-card">
+          <div class="plan-popular">Most Popular</div>
+          <div class="plan-name">Pro</div>
+          <div class="plan-price">$6<span>/mo</span></div>
+          <ul class="plan-features">
+            <li class="ok">Unlimited history</li>
+            <li class="ok">Cloud sync (soon)</li>
+            <li class="ok">Snippets library</li>
+            <li class="ok">Sensitive masking</li>
+            <li class="ok">Text transformations</li>
+            <li class="ok">Tags &amp; collections</li>
+            <li class="ok">Export history</li>
+          </ul>
+          <button class="plan-btn pro" id="upgrade-pro-btn">Upgrade to Pro →</button>
+        </div>
+        <div class="plan-card plan-team" id="plan-team-card">
+          <div class="plan-name">Team</div>
+          <div class="plan-price">$12<span>/user/mo</span></div>
+          <ul class="plan-features">
+            <li class="ok">Everything in Pro</li>
+            <li class="ok">Shared collections</li>
+            <li class="ok">Team workspace</li>
+            <li class="ok">Admin controls</li>
+            <li class="ok">Audit logs</li>
+            <li class="ok">Priority support</li>
+            <li class="ok">SSO (soon)</li>
+          </ul>
+          <button class="plan-btn team" id="upgrade-team-btn">Upgrade to Team →</button>
+        </div>
+      </div>
+      <div class="license-section">
+        <div class="license-label">Have a license key?</div>
+        <div class="license-row">
+          <input type="text" id="license-input" placeholder="CLIP-XXXX-XXXX-XXXX" />
+          <button id="activate-btn" class="btn-primary">Activate</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SETTINGS PANEL ═══ -->
+  <div id="settings-panel" class="side-panel hidden">
+    <div class="side-panel-hdr">
+      <h3>Settings</h3>
+      <button class="modal-x" id="settings-close">✕</button>
+    </div>
+    <div class="side-panel-body">
+
+      <div class="s-section">
+        <div class="s-title">Appearance</div>
+        <div class="s-row">
+          <div class="s-info"><div class="s-label">Theme</div></div>
+          <div class="theme-seg" id="theme-seg">
+            <button class="theme-opt" data-v="light">Light</button>
+            <button class="theme-opt" data-v="dark">Dark</button>
+            <button class="theme-opt" data-v="system">Auto</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="s-section">
+        <div class="s-title">Capture</div>
+        <div class="s-row">
+          <div class="s-info"><div class="s-label">Pause Capture</div><div class="s-desc">Stop recording clipboard</div></div>
+          <label class="tog"><input type="checkbox" id="s-pause" /><span class="tog-track"></span></label>
+        </div>
+        <div class="s-row">
+          <div class="s-info"><div class="s-label">Max History Items</div></div>
+          <select id="s-max-items" class="sel">
+            <option value="50">50 items</option>
+            <option value="100">100 items</option>
+            <option value="200">200 items</option>
+            <option value="500">500 items ⚡</option>
+            <option value="0">Unlimited ⚡</option>
+          </select>
+        </div>
+        <div class="s-row">
+          <div class="s-info"><div class="s-label">Mask Sensitive Data</div><div class="s-desc">Hide API keys &amp; passwords</div></div>
+          <label class="tog"><input type="checkbox" id="s-mask" /><span class="tog-track"></span></label>
+        </div>
+        <div class="s-row">
+          <div class="s-info"><div class="s-label">Track Source App</div><div class="s-desc">Show which app each clip came from</div></div>
+          <label class="tog"><input type="checkbox" id="s-source" /><span class="tog-track"></span></label>
+        </div>
+      </div>
+
+      <div class="s-section">
+        <div class="s-title">System</div>
+        <div class="s-row">
+          <div class="s-info"><div class="s-label">Launch at Login</div><div class="s-desc">Start automatically on boot</div></div>
+          <label class="tog"><input type="checkbox" id="s-login" /><span class="tog-track"></span></label>
+        </div>
+        <div class="s-row">
+          <div class="s-info"><div class="s-label">Auto-paste on Click</div><div class="s-desc">Paste immediately when selecting</div></div>
+          <label class="tog"><input type="checkbox" id="s-autopaste" /><span class="tog-track"></span></label>
+        </div>
+      </div>
+
+      <div class="s-section">
+        <div class="s-title">Excluded Apps</div>
+        <div class="s-desc" style="margin-bottom:10px">Clipboard from these apps won't be captured.</div>
+        <div id="excluded-list" class="excluded-list"></div>
+        <div class="add-ex-row">
+          <input type="text" id="add-ex-input" placeholder="App name (e.g. 1Password)" />
+          <button id="add-ex-btn" class="btn-secondary btn-sm">Add</button>
+        </div>
+      </div>
+
+      <div class="s-section">
+        <div class="s-title">Data</div>
+        <div class="s-actions">
+          <button id="export-btn" class="btn-secondary">📤 Export History</button>
+          <button id="clear-btn" class="btn-danger">🗑️ Clear History</button>
+        </div>
+      </div>
+
+      <div class="s-section">
+        <div class="s-title">Subscription</div>
+        <div id="sub-info-block" class="sub-info-block"></div>
+        <button id="manage-sub-btn" class="btn-primary" style="width:100%;margin-top:12px;">Manage Subscription</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══ TRANSFORM PANEL ═══ -->
+  <div id="transform-panel" class="transform-panel hidden">
+    <div class="tp-title">Transform Text</div>
+    <button class="tp-opt" data-t="uppercase">UPPERCASE</button>
+    <button class="tp-opt" data-t="lowercase">lowercase</button>
+    <button class="tp-opt" data-t="titlecase">Title Case</button>
+    <button class="tp-opt" data-t="trim">Trim Whitespace</button>
+    <button class="tp-opt sep" data-t="json">Format JSON</button>
+    <button class="tp-opt" data-t="minify">Minify / Compact</button>
+    <button class="tp-opt sep" data-t="base64enc">Base64 Encode</button>
+    <button class="tp-opt" data-t="base64dec">Base64 Decode</button>
+    <button class="tp-opt" data-t="urlenc">URL Encode</button>
+    <button class="tp-opt" data-t="urldec">URL Decode</button>
+    <button class="tp-opt sep" data-t="removedups">Remove Dup Lines</button>
+    <button class="tp-opt" data-t="wordcount">Word Count</button>
+  </div>
+
+  <!-- ═══ TAG MODAL ═══ -->
+  <div id="tag-modal" class="modal-overlay hidden">
+    <div class="modal-backdrop" id="tag-modal-backdrop"></div>
+    <div class="modal-card sm-modal">
+      <div class="modal-hdr">
+        <h3>Manage Tags</h3>
+        <button class="modal-x" id="tag-modal-close">✕</button>
+      </div>
+      <div id="tag-existing" class="tag-existing"></div>
+      <div class="tag-input-row">
+        <input type="text" id="tag-input" placeholder="Add tag..." />
+        <button id="tag-add-btn" class="btn-primary btn-sm">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SNIPPET NAME MODAL ═══ -->
+  <div id="snippet-modal" class="modal-overlay hidden">
+    <div class="modal-backdrop" id="snippet-modal-backdrop"></div>
+    <div class="modal-card sm-modal">
+      <div class="modal-hdr">
+        <h3>Save as Snippet</h3>
+        <button class="modal-x" id="snippet-modal-close">✕</button>
+      </div>
+      <input type="text" id="snippet-name-input" placeholder="Snippet name (e.g. API Key)..." />
+      <button id="snippet-save-btn" class="btn-primary" style="width:100%;margin-top:12px;">Save Snippet →</button>
+    </div>
+  </div>
+
+  <!-- ═══ MAIN APP ═══ -->
+  <div class="app-wrap" id="app-wrap">
+
+    <!-- Header -->
+    <header class="app-header">
+      <div class="hdr-left">
+        <div class="app-logo">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </div>
+        <span class="app-name">ClipStack</span>
+        <span id="plan-badge" class="plan-badge">FREE</span>
+      </div>
+      <div class="hdr-search">
+        <div class="search-wrap">
+          <svg class="search-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="text" id="search-input" placeholder="Search clips..." autocomplete="off" spellcheck="false" />
+          <button id="search-clear" class="search-clear hidden">✕</button>
+        </div>
+      </div>
+      <div class="hdr-right">
+        <button id="pause-btn" class="icon-btn" title="Pause Capture">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        </button>
+        <button id="upgrade-btn" class="upgrade-btn">⚡ Pro</button>
+        <button id="settings-btn" class="icon-btn" title="Settings">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Tabs -->
+    <div class="tab-bar">
+      <button class="tab" data-tab="history" id="tab-history">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+        History <span id="hist-count" class="tab-cnt">0</span>
+      </button>
+      <button class="tab" data-tab="snippets" id="tab-snippets">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Snippets <span id="snip-count" class="tab-cnt">0</span>
+      </button>
+      <button class="tab" data-tab="stats" id="tab-stats">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Stats
+      </button>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar" id="filter-bar">
+      <button class="chip active" data-f="all">All</button>
+      <button class="chip" data-f="text">📝 Text</button>
+      <button class="chip" data-f="code">💻 Code</button>
+      <button class="chip" data-f="link">🔗 Link</button>
+      <button class="chip" data-f="image">🖼 Image</button>
+      <button class="chip" data-f="sensitive">🔒 Sensitive</button>
+    </div>
+
+    <!-- Upgrade Banner -->
+    <div id="pro-banner" class="pro-banner hidden">
+      <span>⚡ Unlock Snippets, AI transforms &amp; more</span>
+      <button id="pro-banner-btn" class="pro-banner-cta">Upgrade to Pro</button>
+    </div>
+
+    <!-- Bulk Bar -->
+    <div id="bulk-bar" class="bulk-bar hidden">
+      <span id="bulk-count">0 selected</span>
+      <div style="display:flex;gap:8px">
+        <button id="bulk-delete-btn" class="btn-danger btn-sm">Delete</button>
+        <button id="bulk-cancel-btn" class="btn-ghost btn-sm">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="content-area">
+      <main id="feed" class="feed"></main>
+      <main id="snippets-feed" class="feed hidden"></main>
+      <div id="stats-view" class="stats-view hidden"></div>
+    </div>
+
+    <!-- Toast -->
+    <div id="notice" class="notice"></div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

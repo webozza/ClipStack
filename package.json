@@ -1,0 +1,35 @@
+{
+  "name": "clip-history-electron",
+  "version": "1.0.0",
+  "description": "A beautiful and powerful clipboard history manager for macOS.",
+  "author": "Syed",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "nodemon --watch . --ext js,html,css --exec \"electron .\"",
+    "build": "electron-builder",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "com.syed.clipboard",
+    "productName": "ClipStack",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "build/icon.icns"
+    },
+    "win": {
+      "icon": "build/icon.ico"
+    },
+    "directories": {
+      "output": "dist"
+    }
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "electron": "^30.5.1",
+    "electron-builder": "^24.13.3",
+    "nodemon": "^3.1.9"
+  }
+}
