@@ -172,7 +172,7 @@ function createWindow() {
 async function capturePreviousApp() {
   if (process.platform !== "darwin") return;
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(), 600);
+    const timer = setTimeout(() => resolve(), 1000);
     // Get BOTH the display name AND the bundle identifier.
     // Bundle ID is unique per app, so it correctly distinguishes our Electron
     // process from VS Code, Antigravity, and other Electron-based apps.
@@ -641,29 +641,27 @@ ipcMain.handle("item:copyAndPaste", async (_e, key) => {
 
     console.log("Pasting to app:", previousApp, "[", previousAppBundle, "]");
 
-    // ── VS Code detection via bundle ID ────────────────────────────────
-    const isVSCode = previousAppBundle === "com.microsoft.VSCode"
-      || previousApp === "Code"
-      || previousApp.toLowerCase().includes("code");
+    // ── Universal Hardware Paste ──────────────────────────────────────────
+    // Chromium/Electron-based editors (VS Code, Cursor, Antigravity) often 
+    // ignore macOS soft `keystroke "v"`. Synthesizing the physical hardware 
+    // V key (`key code 9`) bypasses this issue and works perfectly in ALL 
+    // editors natively, without needing to hardcode specific app names.
+    const activateLine = previousAppBundle
+      ? `tell application id "${previousAppBundle}" to activate`
+      : `tell application "${previousApp}" to activate`;
+
+    const script = [
+      `try`,
+      `  ${activateLine}`,
+      `end try`,
+      `delay 0.25`,
+      `tell application "System Events" to key code 9 using command down`,
+    ].join("\n");
 
     return new Promise((resolve) => {
-      const script = isVSCode
-        ? [
-            `tell application id "com.microsoft.VSCode" to activate`,
-            `delay 0.25`,
-            `tell application "System Events" to key code 9 using command down`,
-          ].join("\n")
-        : [
-            `try`,
-            `  tell application "${previousApp}" to activate`,
-            `end try`,
-            `delay 0.22`,
-            `tell application "System Events" to keystroke "v" using command down`,
-          ].join("\n");
-
       exec(`osascript << 'APPLESCRIPT'\n${script}\nAPPLESCRIPT`, (err) => {
         if (err) {
-          console.error("Paste failed, falling back to raw keystroke:", err.message);
+          console.error("Paste failed, falling back to keystroke:", err.message);
           exec(`osascript -e 'tell application "System Events" to keystroke "v" using command down'`, () => resolve(true));
         } else {
           resolve(true);
