@@ -438,10 +438,7 @@ function createCard(item, isSnippet = false) {
     const img = document.createElement('img');
     img.alt = 'Clipboard image';
     img.src = item.value;
-    img.addEventListener('click', e => {
-      e.stopPropagation();
-      openImagePreview(item.value, img.naturalWidth && img.naturalHeight ? `${img.naturalWidth}×${img.naturalHeight}` : '');
-    });
+    // Click bubbles up to the card to trigger paste
     wrap.appendChild(img);
     body.appendChild(wrap);
   } else if (sensitive && !revealed) {
