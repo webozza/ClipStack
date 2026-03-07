@@ -40,3 +40,5 @@ contextBridge.exposeInMainWorld("clipAPI", {
   // Stats
   getStats: () => ipcRenderer.invoke("stats:get"),
 });
+
+
