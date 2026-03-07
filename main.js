@@ -10,35 +10,28 @@ const POLL_MS = 300;
 const store = new Store({
   name: "clipboard",
   defaults: {
-    items: [],
-    pinnedKeys: [],
-    snippets: [],
+    items: [],              // [{ key, value, ts, type, hits }]
+    pinnedKeys: [],         // [key]
     settings: {
       autoPasteOnCmdEnter: true,
       pauseCapture: false,
-      theme: "system",
-      maxItems: 200,
-      maskSensitive: true,
-      trackSource: true,
-      excludedApps: [],
-      launchAtLogin: true,  // default ON — app always lives in the tray
-    },
-    subscription: {
-      plan: "free",
-      activatedAt: null,
-      expiresAt: null,
-    },
-    hasOnboarded: false,
+      theme: "system"       // "system" | "light" | "dark"
+    }
   }
 });
 
 let win = null;
 let lastFormats = "";
-let lastClipboardHash = "";  // Combined hash to prevent infinite loops
+let lastClipboardHash = "";
 let pollTimer = null;
 let rendererReady = false;
 let selectedKey = null;
-let previousApp = null; // Store previous app for macOS
+let previousApp = null;       // display name of last focused app
+let previousAppBundle = null; // bundle ID of last focused app (most reliable)
+let hotkeyBusy = false;       // mutex — prevents double-toggle from key repeat
+
+// Our own bundle ID (from package.json build.appId)
+const OWN_BUNDLE_ID = "com.syed.clipboard";
 
 function hashKey(value) {
   return crypto.createHash("sha1").update(value, "utf8").digest("hex");
@@ -162,8 +155,8 @@ function createWindow() {
     rendererReady = true;
     console.log("✅ Renderer ready");
     sendState();
-    // Show window on first launch so the user knows it opened
-    showWindow();
+    // App starts silently in the tray — user opens via Ctrl+Shift+V or tray icon.
+    // Do NOT auto-show here to avoid stealing focus on startup.
   });
 
   // Hide window instead of closing (keep app running in tray)
@@ -179,10 +172,26 @@ function createWindow() {
 async function capturePreviousApp() {
   if (process.platform !== "darwin") return;
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(), 500);
-    exec(`osascript -e 'tell application "System Events" to get name of first process whose frontmost is true'`, (err, stdout) => {
+    const timer = setTimeout(() => resolve(), 600);
+    // Get BOTH the display name AND the bundle identifier.
+    // Bundle ID is unique per app, so it correctly distinguishes our Electron
+    // process from VS Code, Antigravity, and other Electron-based apps.
+    const script = [
+      `tell application "System Events"`,
+      `  set p to first process whose frontmost is true`,
+      `  set n to name of p`,
+      `  set b to bundle identifier of p`,
+      `  return n & "|" & b`,
+      `end tell`,
+    ].join("\n");
+    exec(`osascript << 'AS'\n${script}\nAS`, (err, stdout) => {
       clearTimeout(timer);
-      if (!err && stdout.trim()) previousApp = stdout.trim();
+      if (!err && stdout.trim()) {
+        const parts = stdout.trim().split("|");
+        previousApp = parts[0]?.trim() || null;
+        previousAppBundle = parts[1]?.trim() || null;
+        console.log(`📍 Previous app: "${previousApp}" [${previousAppBundle}]`);
+      }
       resolve();
     });
   });
@@ -212,23 +221,30 @@ async function toggleWindow() {
 }
 
 function registerHotkey() {
-  const ok1 = globalShortcut.register("CommandOrControl+Shift+V", async () => {
-    if (!win?.isVisible()) await capturePreviousApp();
-    void toggleWindow();
-  });
+  // Shared handler — guards against double-fire from key repeat
+  const handleHotkey = async () => {
+    if (hotkeyBusy) return; // already handling a press, ignore
+    hotkeyBusy = true;
+    try {
+      if (!win?.isVisible()) await capturePreviousApp();
+      await toggleWindow();
+    } finally {
+      // Release after a short cooldown so rapid presses are ignored
+      setTimeout(() => { hotkeyBusy = false; }, 400);
+    }
+  };
 
-  const ok2 = globalShortcut.register("Control+Shift+V", async () => {
-    if (!win?.isVisible()) await capturePreviousApp();
-    void toggleWindow();
-  });
+  // CommandOrControl+Shift+V  → Cmd+Shift+V on macOS, Ctrl+Shift+V on Win/Linux
+  const ok1 = globalShortcut.register("CommandOrControl+Shift+V", handleHotkey);
+  // Control+Shift+V            → Ctrl+Shift+V on macOS explicitly
+  const ok2 = globalShortcut.register("Control+Shift+V", handleHotkey);
 
   const okUp = globalShortcut.register("CommandOrControl+Shift+Up", () => {
     if (!win || !win.isVisible()) return;
     const ordered = getOrderedItems();
     if (!ordered.length) return;
     const idx = Math.max(0, ordered.findIndex(i => i.key === selectedKey));
-    const next = ordered[Math.max(0, idx - 1)];
-    setSelection(next.key);
+    setSelection(ordered[Math.max(0, idx - 1)].key);
   });
 
   const okDown = globalShortcut.register("CommandOrControl+Shift+Down", () => {
@@ -236,8 +252,7 @@ function registerHotkey() {
     const ordered = getOrderedItems();
     if (!ordered.length) return;
     const idx = Math.max(0, ordered.findIndex(i => i.key === selectedKey));
-    const next = ordered[Math.min(ordered.length - 1, idx + 1)];
-    setSelection(next.key);
+    setSelection(ordered[Math.min(ordered.length - 1, idx + 1)].key);
   });
 
   console.log("Registered hotkeys:", { ok1, ok2, okUp, okDown });
@@ -606,33 +621,58 @@ ipcMain.handle("item:copyAndPaste", async (_e, key) => {
   }
   hideWindow();
 
-  // On macOS, activate the previously focused app and paste
-  if (process.platform === "darwin" && previousApp) {
-    console.log("Pasting to app:", previousApp);
+  // Give the window time to fully hide before activating the target app.
+  // Without this, Cmd+V fires while ClipStack still owns the focus.
+  await new Promise((r) => setTimeout(r, 220));
 
-    // VS Code needs special handling - use bundle ID
-    const isVSCode = previousApp === "Code" || previousApp === "Electron" || previousApp.includes("Code");
+  if (process.platform === "darwin") {
+    // ── Self-detection via bundle ID (reliable across dev & production) ────
+    // Bundle IDs are unique: our app = com.syed.clipboard,
+    // VS Code = com.microsoft.VSCode, Antigravity has its own ID, etc.
+    // This correctly handles ALL Electron-based apps without false positives.
+    const isSelf = !previousApp
+      || previousAppBundle === OWN_BUNDLE_ID     // matched by bundle ID (reliable)
+      || (!previousAppBundle && previousApp === app.getName()); // fallback name match
 
-    await new Promise((resolve) => {
-      if (isVSCode) {
-        // For VS Code, use bundle identifier and key code instead of keystroke
-        exec(`osascript -e 'tell application id "com.microsoft.VSCode" to activate' -e 'delay 0.2' -e 'tell application "System Events" to key code 9 using command down'`, (err) => {
-          if (err) console.error("Paste error:", err);
-          resolve(!err);
-        });
-      } else {
-        // For other apps, use regular keystroke
-        exec(`osascript -e 'tell application "${previousApp}" to activate' -e 'delay 0.15' -e 'tell application "System Events" to keystroke "v" using command down'`, (err) => {
-          if (err) console.error("Paste error:", err);
-          resolve(!err);
-        });
-      }
+    if (isSelf) {
+      console.log("Skipping — previousApp is self:", previousApp, previousAppBundle);
+      return false; // nothing to paste to
+    }
+
+    console.log("Pasting to app:", previousApp, "[", previousAppBundle, "]");
+
+    // ── VS Code detection via bundle ID ────────────────────────────────
+    const isVSCode = previousAppBundle === "com.microsoft.VSCode"
+      || previousApp === "Code"
+      || previousApp.toLowerCase().includes("code");
+
+    return new Promise((resolve) => {
+      const script = isVSCode
+        ? [
+            `tell application id "com.microsoft.VSCode" to activate`,
+            `delay 0.25`,
+            `tell application "System Events" to key code 9 using command down`,
+          ].join("\n")
+        : [
+            `try`,
+            `  tell application "${previousApp}" to activate`,
+            `end try`,
+            `delay 0.22`,
+            `tell application "System Events" to keystroke "v" using command down`,
+          ].join("\n");
+
+      exec(`osascript << 'APPLESCRIPT'\n${script}\nAPPLESCRIPT`, (err) => {
+        if (err) {
+          console.error("Paste failed, falling back to raw keystroke:", err.message);
+          exec(`osascript -e 'tell application "System Events" to keystroke "v" using command down'`, () => resolve(true));
+        } else {
+          resolve(true);
+        }
+      });
     });
-    return true;
   }
 
-  // Fallback: just wait and paste
-  await new Promise((r) => setTimeout(r, 160));
+  // Windows / Linux
   return await sendPasteKeystroke();
 });
 
@@ -805,6 +845,7 @@ ipcMain.handle("app:openExternal", (_e, url) => {
 // ---- App lifecycle ----
 app.whenReady().then(async () => {
   // On macOS, explicitly check/request accessibility permissions
+  // The 'true' argument triggers the system prompt if not already granted
   if (process.platform === "darwin") {
     const isTrusted = systemPreferences.isTrustedAccessibilityClient(true);
     console.log("Accessibility Trusted:", isTrusted);
@@ -818,17 +859,9 @@ app.whenReady().then(async () => {
   createTray();
   startClipboardPolling();
 
-  const { settings } = getState();
-
   // Apply theme
+  const { settings } = getState();
   nativeTheme.themeSource = settings.theme || "system";
-
-  // ── Auto-start at login ──────────────────────────────────────────
-  // Apply stored launchAtLogin preference (defaults to true so app is
-  // always running in the tray after installation)
-  const shouldLaunchAtLogin = settings.launchAtLogin !== false; // default true
-  app.setLoginItemSettings({ openAtLogin: shouldLaunchAtLogin });
-  console.log("Launch at login:", shouldLaunchAtLogin);
 });
 
 app.on("before-quit", () => {
@@ -875,20 +908,10 @@ function createTray() {
   tray = new Tray(icon);
   tray.setToolTip("Clipboard History");
 
-  // Fix: capture previous app BEFORE showing window when clicking tray icon
-  tray.on("click", async () => {
-    if (!win?.isVisible()) await capturePreviousApp();
-    toggleWindow();
-  });
+  tray.on("click", () => toggleWindow());
 
   tray.setContextMenu(Menu.buildFromTemplate([
-    {
-      label: "Show/Hide",
-      click: async () => {
-        if (!win?.isVisible()) await capturePreviousApp();
-        toggleWindow();
-      }
-    },
+    { label: "Show/Hide", click: () => toggleWindow() },
     { type: "separator" },
     {
       label: "Quit", click: () => {
@@ -898,5 +921,4 @@ function createTray() {
     }
   ]));
 }
-
 
