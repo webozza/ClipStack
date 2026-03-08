@@ -504,7 +504,16 @@ function createCard(item, isSnippet = false) {
 
 function buildMenuItems(item, sensitive, revealed, isSnippet) {
   const items = [
-    { icon: '📋', label: 'Copy', action: async () => { await window.clipAPI.copyItem(item.key); showNotice('Copied!'); } },
+    {
+      icon: '📋',
+      label: item.type === 'image' ? 'Copy Image' : 'Copy',
+      pro: item.type === 'image',
+      action: async () => {
+        if (item.type === 'image' && !isProUser()) { showNotice('Premium feature requires Pro subscription', 'error'); openSubModal(); return; }
+        await window.clipAPI.copyItem(item.key);
+        showNotice('Copied!');
+      }
+    },
     { icon: '📌', label: isPinned(item.key) ? 'Unpin' : 'Pin', action: async () => { await window.clipAPI.togglePin(item.key); } },
     'sep',
   ];
@@ -513,15 +522,29 @@ function buildMenuItems(item, sensitive, revealed, isSnippet) {
     items.push({ icon: '✏️', label: 'Edit', action: () => { editingKey = item.key; renderFeedCurrent(); } });
     items.push({
       icon: '🔄', label: 'Transform', pro: true, action: () => {
-        if (!isProUser()) { openSubModal(); return; }
+        if (!isProUser()) { showNotice('Premium feature requires Pro subscription', 'error'); openSubModal(); return; }
         transformKey = item.key;
         showTransformPanel();
       }
     });
     items.push({
       icon: '🏷️', label: 'Tags', pro: true, action: () => {
-        if (!isProUser()) { openSubModal(); return; }
+        if (!isProUser()) { showNotice('Premium feature requires Pro subscription', 'error'); openSubModal(); return; }
         openTagModal(item.key);
+      }
+    });
+    items.push('sep');
+  } else {
+    items.push({
+      icon: '⬇️', label: 'Download Image', pro: true, action: () => {
+        if (!isProUser()) { showNotice('Premium feature requires Pro subscription', 'error'); openSubModal(); return; }
+        const a = document.createElement('a');
+        a.href = item.value;
+        a.download = `clipstack-image-${Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showNotice('Downloaded!');
       }
     });
     items.push('sep');
@@ -530,7 +553,7 @@ function buildMenuItems(item, sensitive, revealed, isSnippet) {
   if (!isSnippet) {
     items.push({
       icon: '📄', label: 'Save as Snippet', pro: true, action: () => {
-        if (!isProUser()) { openSubModal(); return; }
+        if (!isProUser()) { showNotice('Premium feature requires Pro subscription', 'error'); openSubModal(); return; }
         snippetKey = item.key;
         openSnippetModal();
       }
