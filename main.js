@@ -10,12 +10,12 @@ const POLL_MS = 300;
 const store = new Store({
   name: "clipboard",
   defaults: {
-    items: [],              // [{ key, value, ts, type, hits }]
-    pinnedKeys: [],         // [key]
+    items: [],
+    pinnedKeys: [],
     settings: {
       autoPasteOnCmdEnter: true,
       pauseCapture: false,
-      theme: "system"       // "system" | "light" | "dark"
+      theme: "system"
     }
   }
 });
@@ -26,9 +26,9 @@ let lastClipboardHash = "";
 let pollTimer = null;
 let rendererReady = false;
 let selectedKey = null;
-let previousApp = null;       // display name of last focused app
-let previousAppBundle = null; // bundle ID of last focused app (most reliable)
-let hotkeyBusy = false;       // mutex — prevents double-toggle from key repeat
+let previousApp = null;
+let previousAppBundle = null;
+let hotkeyBusy = false;
 
 // Our own bundle ID (from package.json build.appId)
 const OWN_BUNDLE_ID = "com.syed.clipboard";
@@ -155,11 +155,10 @@ function createWindow() {
     rendererReady = true;
     console.log("✅ Renderer ready");
     sendState();
-    // App starts silently in the tray — user opens via Ctrl+Shift+V or tray icon.
-    // Do NOT auto-show here to avoid stealing focus on startup.
+
   });
 
-  // Hide window instead of closing (keep app running in tray)
+
   win.on("close", (e) => {
     if (!app.isQuitting) {
       e.preventDefault();
@@ -173,9 +172,6 @@ async function capturePreviousApp() {
   if (process.platform !== "darwin") return;
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(), 1000);
-    // Get BOTH the display name AND the bundle identifier.
-    // Bundle ID is unique per app, so it correctly distinguishes our Electron
-    // process from VS Code, Antigravity, and other Electron-based apps.
     const script = [
       `tell application "System Events"`,
       `  set p to first process whose frontmost is true`,
@@ -234,9 +230,9 @@ function registerHotkey() {
     }
   };
 
-  // CommandOrControl+Shift+V  → Cmd+Shift+V on macOS, Ctrl+Shift+V on Win/Linux
+
   const ok1 = globalShortcut.register("CommandOrControl+Shift+V", handleHotkey);
-  // Control+Shift+V            → Ctrl+Shift+V on macOS explicitly
+
   const ok2 = globalShortcut.register("Control+Shift+V", handleHotkey);
 
   const okUp = globalShortcut.register("CommandOrControl+Shift+Up", () => {
@@ -842,8 +838,7 @@ ipcMain.handle("app:openExternal", (_e, url) => {
 
 // ---- App lifecycle ----
 app.whenReady().then(async () => {
-  // On macOS, explicitly check/request accessibility permissions
-  // The 'true' argument triggers the system prompt if not already granted
+
   if (process.platform === "darwin") {
     const isTrusted = systemPreferences.isTrustedAccessibilityClient(true);
     console.log("Accessibility Trusted:", isTrusted);

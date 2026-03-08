@@ -490,6 +490,13 @@ function createCard(item, isSnippet = false) {
       toggleMultiSelect(item.key);
       return;
     }
+
+    if (item.type === 'image' && !isProUser()) {
+      showNotice('Premium feature requires Pro subscription', 'error');
+      openSubModal();
+      return;
+    }
+
     if (state.settings?.autoPasteOnCmdEnter !== false) {
       const ok = await window.clipAPI.copyAndPaste(item.key);
       if (!ok) showNotice('Paste failed', 'error');
@@ -770,6 +777,12 @@ function handleKeydown(e) {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (selectedKey) {
+        const item = items.find(i => i.key === selectedKey);
+        if (item && item.type === 'image' && !isProUser()) {
+          showNotice('Premium feature requires Pro subscription', 'error');
+          openSubModal();
+          return;
+        }
         window.clipAPI.copyAndPaste(selectedKey).then(ok => { if (!ok) showNotice('Paste failed', 'error'); });
       }
     }
