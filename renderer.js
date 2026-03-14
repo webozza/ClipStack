@@ -44,9 +44,10 @@ function isPinned(key) {
   return (state.pinnedKeys || []).includes(key);
 }
 
+//enable pro feature
 function isProUser() {
-  // return true; // TODO: restore when Stripe billing is live
-  return (state.subscription?.plan || 'free') !== 'free';
+  return true; // TODO: restore when Stripe billing is live
+  // return (state.subscription?.plan || 'free') !== 'free';
 }
 
 const SENSITIVE_RE = [
@@ -194,6 +195,11 @@ function syncSettingsUI() {
   // Excluded apps
   renderExcludedList(s.excludedApps || []);
   updatePlanUI();
+
+  // Hotkey display
+  if (typeof updateHotkeyDisplay === 'function') {
+    updateHotkeyDisplay(s.hotkey);
+  }
 }
 
 function renderExcludedList(apps) {
@@ -554,6 +560,20 @@ function buildMenuItems(item, sensitive, revealed, isSnippet) {
         showNotice('Downloaded!');
       }
     });
+    items.push({
+      icon: '🔗', label: 'Generate Link', pro: true, action: async () => {
+        if (!isProUser()) { showNotice('Premium feature requires Pro subscription', 'error'); openSubModal(); return; }
+        
+        showNotice('Generating secure tunnel...');
+        try {
+          const url = await window.clipAPI.generateNgrokLink(item.key);
+          await window.clipAPI.copyText(url);
+          showNotice('Ngrok Link copied!');
+        } catch(e) {
+          showNotice('Tunnel failed. Check connection.', 'error');
+        }
+      }
+    });
     items.push('sep');
   }
 
@@ -738,6 +758,9 @@ function clearMultiSelect() {
 
 // ── KEYBOARD NAVIGATION ─────────────────────
 function handleKeydown(e) {
+  // Skip when hotkey recorder is active
+  if (hotkeyRecording) return;
+
   const active = document.activeElement;
   const isTyping = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
 
@@ -941,6 +964,42 @@ $('s-source').addEventListener('change', async e => { await window.clipAPI.updat
 $('s-login').addEventListener('change', async e => { await window.clipAPI.setLoginItem(e.target.checked); await window.clipAPI.updateSettings({ launchAtLogin: e.target.checked }); });
 $('s-autopaste').addEventListener('change', async e => { await window.clipAPI.updateSettings({ autoPasteOnCmdEnter: e.target.checked }); });
 $('s-max-items').addEventListener('change', async e => { await window.clipAPI.updateSettings({ maxItems: Number(e.target.value) }); });
+
+// ── HOTKEY DROPDOWN ─────────────────────────────
+let hotkeyRecording = false; // keep for keydown guard compatibility
+
+function setHotkeyStatus(msg, type = '') {
+  const el = $('hotkey-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = `hotkey-status ${type}`;
+  if (msg) setTimeout(() => { el.textContent = ''; el.className = 'hotkey-status'; }, 4000);
+}
+
+function syncHotkeyList() {
+  const sel = $('s-hotkey');
+  if (!sel) return;
+  sel.value = state.settings?.hotkey || 'CommandOrControl+Shift+V';
+}
+
+// Alias for backward compat with syncSettingsUI
+function updateHotkeyDisplay() {
+  syncHotkeyList();
+}
+
+$('s-hotkey').addEventListener('change', async (e) => {
+  const accel = e.target.value;
+  if (!accel) return;
+
+  const result = await window.clipAPI.updateHotkey(accel);
+  if (result?.success) {
+    setHotkeyStatus('✓ Shortcut updated', 'success');
+  } else {
+    setHotkeyStatus(`✗ ${result?.error || 'Failed to set shortcut'}`, 'error');
+    // Revert
+    syncHotkeyList();
+  }
+});
 
 function updatePauseBtn() {
   const paused = state.settings?.pauseCapture;

@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("clipAPI", {
   deleteItems: (keys) => ipcRenderer.invoke("item:deleteMany", keys),
   togglePin: (key) => ipcRenderer.invoke("item:togglePin", key),
   copyItem: (key) => ipcRenderer.invoke("item:copy", key),
+  copyText: (text) => ipcRenderer.invoke("item:copyText", text),
   copyAndPaste: (key) => ipcRenderer.invoke("item:copyAndPaste", key),
   editItem: (key, value) => ipcRenderer.invoke("item:edit", key, value),
   setTags: (key, tags) => ipcRenderer.invoke("item:setTags", key, tags),
@@ -22,6 +23,8 @@ contextBridge.exposeInMainWorld("clipAPI", {
 
   // Settings
   updateSettings: (patch) => ipcRenderer.invoke("settings:update", patch),
+  updateHotkey: (accelerator) => ipcRenderer.invoke("settings:updateHotkey", accelerator),
+  resetHotkey: () => ipcRenderer.invoke("settings:resetHotkey"),
   togglePause: () => ipcRenderer.invoke("capture:togglePause"),
   setLoginItem: (enabled) => ipcRenderer.invoke("app:setLoginItem", enabled),
 
@@ -39,6 +42,9 @@ contextBridge.exposeInMainWorld("clipAPI", {
 
   // Stats
   getStats: () => ipcRenderer.invoke("stats:get"),
+
+  // Ngrok
+  generateNgrokLink: (key) => ipcRenderer.invoke("item:generateNgrokLink", key),
 });
 
 

@@ -1,4 +1,6 @@
 const { app, BrowserWindow, globalShortcut, clipboard, ipcMain, nativeImage, Tray, Menu, nativeTheme, net, systemPreferences, shell, dialog } = require("electron");
+const http = require("http");
+const ngrok = require("@ngrok/ngrok");
 const path = require("path");
 const fs = require("fs");
 const Store = require("electron-store");
@@ -6,6 +8,8 @@ const crypto = require("crypto");
 
 const DEFAULT_MAX_ITEMS = 200;
 const POLL_MS = 300;
+
+const DEFAULT_HOTKEY = "CommandOrControl+Shift+V";
 
 const store = new Store({
   name: "clipboard",
@@ -15,7 +19,8 @@ const store = new Store({
     settings: {
       autoPasteOnCmdEnter: true,
       pauseCapture: false,
-      theme: "system"
+      theme: "system",
+      hotkey: DEFAULT_HOTKEY
     }
   }
 });
@@ -29,6 +34,9 @@ let selectedKey = null;
 let previousApp = null;
 let previousAppBundle = null;
 let hotkeyBusy = false;
+
+let imageServer = null;
+let ngrokUrl = null;
 
 // Our own bundle ID (from package.json build.appId)
 const OWN_BUNDLE_ID = "com.syed.clipboard";
@@ -216,24 +224,48 @@ async function toggleWindow() {
   else await showWindow();
 }
 
+// Shared handler — guards against double-fire from key repeat
+const handleHotkey = async () => {
+  if (hotkeyBusy) return;
+  hotkeyBusy = true;
+  try {
+    if (!win?.isVisible()) await capturePreviousApp();
+    await toggleWindow();
+  } finally {
+    setTimeout(() => { hotkeyBusy = false; }, 400);
+  }
+};
+
+let registeredHotkeys = [];
+
 function registerHotkey() {
-  // Shared handler — guards against double-fire from key repeat
-  const handleHotkey = async () => {
-    if (hotkeyBusy) return; // already handling a press, ignore
-    hotkeyBusy = true;
+  // Unregister previous hotkeys
+  registeredHotkeys.forEach(key => {
+    try { globalShortcut.unregister(key); } catch (_) {}
+  });
+  registeredHotkeys = [];
+
+  const settings = store.get("settings") || {};
+  const hotkey = settings.hotkey || DEFAULT_HOTKEY;
+
+  const ok1 = globalShortcut.register(hotkey, handleHotkey);
+  registeredHotkeys.push(hotkey);
+  console.log(`Registered primary hotkey: ${hotkey} =>`, ok1);
+
+  // Also register Control+Shift+V as fallback if the primary isn't already that
+  if (hotkey !== "Control+Shift+V" && hotkey !== "CommandOrControl+Shift+V") {
     try {
-      if (!win?.isVisible()) await capturePreviousApp();
-      await toggleWindow();
-    } finally {
-      // Release after a short cooldown so rapid presses are ignored
-      setTimeout(() => { hotkeyBusy = false; }, 400);
-    }
-  };
-
-
-  const ok1 = globalShortcut.register("CommandOrControl+Shift+V", handleHotkey);
-
-  const ok2 = globalShortcut.register("Control+Shift+V", handleHotkey);
+      const ok2 = globalShortcut.register("Control+Shift+V", handleHotkey);
+      registeredHotkeys.push("Control+Shift+V");
+      console.log("Registered fallback Control+Shift+V =>", ok2);
+    } catch (_) {}
+  } else {
+    // Register both variants for default shortcut
+    try {
+      const ok2 = globalShortcut.register("Control+Shift+V", handleHotkey);
+      registeredHotkeys.push("Control+Shift+V");
+    } catch (_) {}
+  }
 
   const okUp = globalShortcut.register("CommandOrControl+Shift+Up", () => {
     if (!win || !win.isVisible()) return;
@@ -242,6 +274,7 @@ function registerHotkey() {
     const idx = Math.max(0, ordered.findIndex(i => i.key === selectedKey));
     setSelection(ordered[Math.max(0, idx - 1)].key);
   });
+  registeredHotkeys.push("CommandOrControl+Shift+Up");
 
   const okDown = globalShortcut.register("CommandOrControl+Shift+Down", () => {
     if (!win || !win.isVisible()) return;
@@ -250,8 +283,9 @@ function registerHotkey() {
     const idx = Math.max(0, ordered.findIndex(i => i.key === selectedKey));
     setSelection(ordered[Math.min(ordered.length - 1, idx + 1)].key);
   });
+  registeredHotkeys.push("CommandOrControl+Shift+Down");
 
-  console.log("Registered hotkeys:", { ok1, ok2, okUp, okDown });
+  console.log("Registered hotkeys:", registeredHotkeys);
 }
 
 
@@ -702,6 +736,13 @@ ipcMain.handle("item:copy", async (_e, key) => {
   return true;
 });
 
+ipcMain.handle("item:copyText", (_e, text) => {
+  clipboard.writeText(text);
+  // Update tracking to prevent re-capture
+  lastClipboardHash = crypto.createHash("sha1").update(text).update("").digest("hex");
+  return true;
+});
+
 ipcMain.handle("settings:update", (_e, patch) => {
   const settings = store.get("settings") || {};
   const next = { ...settings, ...patch };
@@ -713,6 +754,39 @@ ipcMain.handle("settings:update", (_e, patch) => {
 
   sendState();
   return next;
+});
+
+ipcMain.handle("settings:updateHotkey", (_e, accelerator) => {
+  if (!accelerator || typeof accelerator !== "string") {
+    return { success: false, error: "Invalid shortcut" };
+  }
+  try {
+    // Validate by trying to register (then immediately unregister)
+    const testOk = globalShortcut.register(accelerator, () => {});
+    globalShortcut.unregister(accelerator);
+    if (!testOk) return { success: false, error: "Could not register shortcut" };
+
+    // Save and re-register
+    const settings = store.get("settings") || {};
+    settings.hotkey = accelerator;
+    store.set("settings", settings);
+
+    registerHotkey();
+    sendState();
+    return { success: true, hotkey: accelerator };
+  } catch (err) {
+    console.error("Failed to update hotkey:", err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("settings:resetHotkey", () => {
+  const settings = store.get("settings") || {};
+  settings.hotkey = DEFAULT_HOTKEY;
+  store.set("settings", settings);
+  registerHotkey();
+  sendState();
+  return { success: true, hotkey: DEFAULT_HOTKEY };
 });
 
 ipcMain.handle("capture:togglePause", () => {
@@ -834,6 +908,65 @@ ipcMain.handle("app:setLoginItem", (_e, enabled) => {
 ipcMain.handle("app:openExternal", (_e, url) => {
   shell.openExternal(url);
   return true;
+});
+
+async function ensureImageServer() {
+  if (imageServer) return imageServer.address().port;
+
+  imageServer = http.createServer((req, res) => {
+    const parts = req.url.split("/");
+    const key = parts[parts.length - 1];
+
+    if (req.url.startsWith("/image/")) {
+      const items = store.get("items") || [];
+      const item = items.find(i => i.key === key && i.type === "image");
+
+      if (item) {
+        const base64Data = item.value.replace(/^data:image\/\w+;base64,/, "");
+        const buffer = Buffer.from(base64Data, "base64");
+        res.writeHead(200, {
+          "Content-Type": "image/png",
+          "Content-Length": buffer.length,
+          "Cache-Control": "public, max-age=31536000"
+        });
+        res.end(buffer);
+        return;
+      }
+    }
+
+    res.writeHead(404);
+    res.end();
+  });
+
+  return new Promise((resolve) => {
+    imageServer.listen(0, "127.0.0.1", () => {
+      resolve(imageServer.address().port);
+    });
+  });
+}
+
+ipcMain.handle("item:generateNgrokLink", async (_e, key) => {
+  try {
+    const port = await ensureImageServer();
+
+    if (!ngrokUrl) {
+      const token = "34e0UOlrpogRpptsdqPquzp3YxQ_3EpLgcJWVpHhKKnARANJa";
+      
+      const listener = await ngrok.forward({
+        addr: port,
+        authtoken: token,
+        schemes: ["https"],
+        metadata: "ClipStack Tunnel"
+      });
+      
+      ngrokUrl = listener.url();
+    }
+
+    return `${ngrokUrl}/image/${key}`;
+  } catch (err) {
+    console.error("Ngrok Error:", err);
+    throw err;
+  }
 });
 
 // ---- App lifecycle ----

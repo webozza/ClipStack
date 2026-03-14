@@ -718,6 +718,37 @@ button { cursor: pointer; }
 .s-label { font-size: 12px; font-weight: 500; color: var(--text); }
 .s-desc { font-size: 11px; color: var(--text-3); margin-top: 2px; }
 
+/* Hotkey Dropdown */
+.hotkey-sel {
+  min-width: 140px;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  padding: 6px 10px;
+}
+
+.hotkey-sel optgroup {
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text-2);
+  letter-spacing: 0.3px;
+}
+
+.hotkey-sel option {
+  font-size: 13px;
+  letter-spacing: 0.8px;
+  padding: 4px 8px;
+}
+
+.hotkey-status {
+  margin-top: 6px;
+  font-size: 11px;
+  min-height: 16px;
+  transition: all 0.2s;
+}
+
+.hotkey-status.success { color: var(--green); }
+.hotkey-status.error { color: var(--red); }
+
 /* Toggle switch */
 .tog { display: flex; align-items: center; flex-shrink: 0; }
 .tog input { display: none; }
