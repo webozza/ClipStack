@@ -1,4 +1,5 @@
-# ClipStack 📋
+# 
+ 📋
 
 A professional, modern, cross-platform clipboard manager built with Electron, HTML, CSS, and Vanilla JavaScript. ClipStack supercharges your productivity by keeping a smart history of everything you copy, allowing you to instantly search, transform, and paste content seamlessly across any application.
 

@@ -11,7 +11,16 @@ const noticeEl = $('notice');
 const searchInput = $('search-input');
 
 // ── STATE ─────────────────────────────────────
-let state = { items: [], pinnedKeys: [], snippets: [], settings: {}, subscription: { plan: 'free' }, hasOnboarded: false };
+let state = { items: [], pinnedKeys: [], snippets: [], settings: {}, subscription: { plan: 'free' }, hasOnboarded: false, flags: {} };
+// Build flags resolved at init() — defaults are conservative (everything off)
+// so the UI stays safe until the main process tells us otherwise.
+let FLAGS = {
+  PRO_UI_ENABLED: false,
+  PRO_FEATURES_UNLOCKED: false,
+  SHARING_ENABLED: false,
+  AUTO_PASTE_ENABLED: false,
+  IS_MAS_BUILD: false,
+};
 let activeTab = 'history';
 let typeFilter = 'all';
 let searchQuery = '';
@@ -44,10 +53,12 @@ function isPinned(key) {
   return (state.pinnedKeys || []).includes(key);
 }
 
-//enable pro feature
+// Pro entitlement check.
+// PRO_FEATURES_UNLOCKED is the build-time master switch (false until IAP ships).
+// Once IAP is wired, also require subscription.plan !== 'free'.
 function isProUser() {
-  return true; // TODO: restore when Stripe billing is live
-  // return (state.subscription?.plan || 'free') !== 'free';
+  if (!FLAGS.PRO_FEATURES_UNLOCKED) return false;
+  return (state.subscription?.plan || 'free') !== 'free';
 }
 
 const SENSITIVE_RE = [
@@ -112,46 +123,172 @@ function updatePlanUI() {
   const plan = state.subscription?.plan || 'free';
   const badge = $('plan-badge');
   const upgradeBtn = $('upgrade-btn');
+  const proBanner = $('pro-banner');
+  const settingsSubSection = $('settings-sub-section');
 
-  badge.textContent = plan.toUpperCase();
-  badge.className = `plan-badge ${plan}`;
-
-  if (plan === 'free') {
-    upgradeBtn.classList.remove('hidden');
-    $('pro-banner').classList.remove('hidden');
-  } else {
-    upgradeBtn.classList.add('hidden');
-    $('pro-banner').classList.add('hidden');
+  // Hard hide every Pro-related UI element when the build doesn't enable it.
+  // Privacy Policy / About replace that section instead.
+  if (!FLAGS.PRO_UI_ENABLED) {
+    if (badge) badge.classList.add('hidden');
+    if (upgradeBtn) upgradeBtn.classList.add('hidden');
+    if (proBanner) proBanner.classList.add('hidden');
+    if (settingsSubSection) settingsSubSection.classList.add('hidden');
+    return;
   }
 
-  // Sub info block in settings
+  if (badge) {
+    badge.textContent = plan.toUpperCase();
+    badge.className = `plan-badge ${plan}`;
+    badge.classList.remove('hidden');
+  }
+
+  if (plan === 'free') {
+    upgradeBtn?.classList.remove('hidden');
+    proBanner?.classList.remove('hidden');
+  } else {
+    upgradeBtn?.classList.add('hidden');
+    proBanner?.classList.add('hidden');
+  }
+
   const block = $('sub-info-block');
   if (block) {
     const expiry = state.subscription?.expiresAt
       ? `Expires: ${new Date(state.subscription.expiresAt).toLocaleDateString()}`
-      : plan === 'free' ? 'Upgrade for full access' : 'Lifetime / Annual';
+      : plan === 'free' ? 'Upgrade for full access' : 'Active';
     block.innerHTML = `<div class="sub-plan-row">${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan</div><div class="sub-plan-detail">${expiry}</div>`;
   }
 }
 
 function openSubModal() {
+  if (!FLAGS.PRO_UI_ENABLED) return;
   $('subscription-modal').classList.remove('hidden');
   const plan = state.subscription?.plan || 'free';
-  $('plan-free-btn').disabled = plan === 'free';
-  $('plan-free-btn').textContent = plan === 'free' ? 'Current Plan' : 'Downgrade';
-}
-function closeSubModal() { $('subscription-modal').classList.add('hidden'); }
-
-// ── ONBOARDING ─────────────────────────────────
-function checkOnboarding() {
-  if (!state.hasOnboarded) {
-    $('onboarding').classList.remove('hidden');
+  const freeBtn = $('plan-free-btn');
+  if (freeBtn) {
+    freeBtn.disabled = plan === 'free';
+    freeBtn.textContent = plan === 'free' ? 'Current Plan' : 'Downgrade';
   }
 }
+function closeSubModal() { $('subscription-modal')?.classList.add('hidden'); }
 
-$('onboarding-btn').addEventListener('click', async () => {
+// ── ONBOARDING ─────────────────────────────────
+let onbStep = 1;
+let maxOnbStepReached = 1;
+
+function checkOnboarding() {
+  if (state.hasOnboarded) return;
+  $('onboarding').classList.remove('hidden');
+  maxOnbStepReached = 1;
+  syncOnboardingFromState();
+  showOnbStep(1);
+}
+
+function syncOnboardingFromState() {
+  const s = state.settings || {};
+  const set = (id, v) => { const el = $(id); if (el) el.checked = !!v; };
+  set('onb-login', s.launchAtLogin);
+  set('onb-pause', s.pauseCapture);
+  set('onb-mask', s.maskSensitive ?? true);
+  set('onb-source', s.trackSource);
+  const max = $('onb-max-items');
+  if (max) max.value = String(s.maxItems ?? 200);
+  const disp = $('onb-hotkey-disp');
+  if (disp) disp.textContent = formatHotkey(s.hotkey || 'CommandOrControl+Shift+V');
+}
+
+function formatHotkey(accel) {
+  return accel
+    .replace('CommandOrControl', '⌘')
+    .replace('Command', '⌘')
+    .replace('Control', '⌃')
+    .replace('Shift', '⇧')
+    .replace('Alt', '⌥')
+    .replace(/\+/g, ' ');
+}
+
+function showOnbStep(n) {
+  onbStep = n;
+  maxOnbStepReached = Math.max(maxOnbStepReached, n);
+  document.querySelectorAll('.onb-screen').forEach(s => {
+    s.classList.toggle('hidden', Number(s.dataset.step) !== n);
+  });
+  document.querySelectorAll('.onb-dot-step').forEach(d => {
+    const dotStep = Number(d.dataset.dot);
+    d.classList.toggle('active', dotStep === n);
+    d.disabled = dotStep > maxOnbStepReached;
+    d.setAttribute('aria-current', dotStep === n ? 'step' : 'false');
+  });
+  const skip = $('onb-skip');
+  if (skip) skip.classList.toggle('hidden', n === 4);
+  const nextArrow = $('onb-next-arrow');
+  if (nextArrow) nextArrow.classList.toggle('hidden', n < 2 || n > 3);
+}
+
+async function finishOnboarding() {
   $('onboarding').classList.add('hidden');
   await window.clipAPI.setOnboarded();
+}
+
+$('onb-skip').addEventListener('click', finishOnboarding);
+
+$('onb-login').addEventListener('change', async e => {
+  await window.clipAPI.setLoginItem(e.target.checked);
+  await window.clipAPI.updateSettings({ launchAtLogin: e.target.checked });
+});
+
+$('onb-max-items').addEventListener('change', async e => {
+  await window.clipAPI.updateSettings({ maxItems: parseInt(e.target.value, 10) });
+});
+
+$('onb-hotkey-reset').addEventListener('click', async () => {
+  const res = await window.clipAPI.resetHotkey();
+  if (res?.success) {
+    $('onb-hotkey-disp').textContent = formatHotkey(res.hotkey);
+  }
+});
+
+$('onb-next-1').addEventListener('click', () => showOnbStep(2));
+$('onb-next-arrow').addEventListener('click', () => showOnbStep(Math.min(4, onbStep + 1)));
+
+document.querySelectorAll('.onb-a11y-row').forEach(row => {
+  row.addEventListener('click', () => {
+    document.querySelectorAll('.onb-a11y-row').forEach(r => r.classList.remove('onb-a11y-highlight'));
+    row.classList.add('onb-a11y-highlight');
+  });
+});
+
+$('onb-pause').addEventListener('change', async e => {
+  await window.clipAPI.updateSettings({ pauseCapture: e.target.checked });
+});
+$('onb-mask').addEventListener('change', async e => {
+  await window.clipAPI.updateSettings({ maskSensitive: e.target.checked });
+});
+$('onb-source').addEventListener('change', async e => {
+  await window.clipAPI.updateSettings({ trackSource: e.target.checked });
+});
+
+document.querySelectorAll('.onb-dot-step').forEach(dot => {
+  dot.addEventListener('click', () => {
+    const targetStep = Number(dot.dataset.dot);
+    if (targetStep <= maxOnbStepReached) showOnbStep(targetStep);
+  });
+});
+
+$('onb-later').addEventListener('click', finishOnboarding);
+$('onb-allow').addEventListener('click', async () => {
+  await window.clipAPI.openA11ySettings();
+  finishOnboarding();
+});
+
+// Dev shortcut: Cmd/Ctrl+Shift+O replays the onboarding flow.
+window.addEventListener('keydown', async (e) => {
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.shiftKey && (e.key === 'O' || e.key === 'o')) {
+    e.preventDefault();
+    await window.clipAPI.resetOnboarding();
+    state.hasOnboarded = false;
+    checkOnboarding();
+  }
 });
 
 // ── SETTINGS PANEL ─────────────────────────────
@@ -174,11 +311,6 @@ function closeSettings() { $('settings-panel').classList.add('hidden'); }
 function syncSettingsUI() {
   const s = state.settings || {};
   const sub = state.subscription || {};
-
-  // Theme
-  document.querySelectorAll('.theme-opt').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.v === (s.theme || 'system'));
-  });
 
   // Toggles
   const setChk = (id, val) => { const el = $(id); if (el) el.checked = !!val; };
@@ -356,14 +488,6 @@ function createCard(item, isSnippet = false) {
   const right = document.createElement('div');
   right.className = 'card-right';
 
-  // Size label
-  if (item.type !== 'image') {
-    const sz = document.createElement('span');
-    sz.className = 'meta-badge';
-    sz.textContent = `${(item.value || '').length}c`;
-    right.appendChild(sz);
-  }
-
   // Kebab menu
   const menuWrap = document.createElement('div');
   menuWrap.className = 'menu-wrap';
@@ -389,7 +513,8 @@ function createCard(item, isSnippet = false) {
     } else {
       const btn = document.createElement('button');
       btn.className = `dd-item${mi.danger ? ' danger' : ''}`;
-      btn.innerHTML = `${mi.icon || ''} ${mi.label}${mi.pro && !isProUser() ? '<span class="dd-pro-lock">PRO</span>' : ''}`;
+      const showLock = FLAGS.PRO_UI_ENABLED && mi.pro && !isProUser();
+      btn.innerHTML = `${mi.icon || ''} ${mi.label}${showLock ? '<span class="dd-pro-lock">PRO</span>' : ''}`;
       btn.addEventListener('click', e => {
         e.stopPropagation();
         openMenuKey = null;
@@ -497,18 +622,12 @@ function createCard(item, isSnippet = false) {
       return;
     }
 
-    if (item.type === 'image' && !isProUser()) {
-      showNotice('Premium feature requires Pro subscription', 'error');
-      openSubModal();
-      return;
-    }
-
-    if (state.settings?.autoPasteOnCmdEnter !== false) {
+    if (state.settings?.autoPasteOnCmdEnter !== false && FLAGS.AUTO_PASTE_ENABLED) {
       const ok = await window.clipAPI.copyAndPaste(item.key);
       if (!ok) showNotice('Paste failed', 'error');
     } else {
       await window.clipAPI.copyItem(item.key);
-      showNotice('Copied!');
+      showNotice(FLAGS.AUTO_PASTE_ENABLED ? 'Copied!' : 'Copied — press ⌘V to paste');
     }
   });
 
@@ -520,9 +639,7 @@ function buildMenuItems(item, sensitive, revealed, isSnippet) {
     {
       icon: '📋',
       label: item.type === 'image' ? 'Copy Image' : 'Copy',
-      pro: item.type === 'image',
       action: async () => {
-        if (item.type === 'image' && !isProUser()) { showNotice('Premium feature requires Pro subscription', 'error'); openSubModal(); return; }
         await window.clipAPI.copyItem(item.key);
         showNotice('Copied!');
       }
@@ -535,43 +652,29 @@ function buildMenuItems(item, sensitive, revealed, isSnippet) {
     items.push({ icon: '✏️', label: 'Edit', action: () => { editingKey = item.key; renderFeedCurrent(); } });
     items.push({
       icon: '🔄', label: 'Transform', pro: true, action: () => {
-        if (!isProUser()) { showNotice('Premium feature requires Pro subscription', 'error'); openSubModal(); return; }
+        if (FLAGS.PRO_UI_ENABLED && !isProUser()) { showNotice('Premium feature requires Pro subscription', 'error'); openSubModal(); return; }
         transformKey = item.key;
         showTransformPanel();
       }
     });
     items.push({
       icon: '🏷️', label: 'Tags', pro: true, action: () => {
-        if (!isProUser()) { showNotice('Premium feature requires Pro subscription', 'error'); openSubModal(); return; }
+        if (FLAGS.PRO_UI_ENABLED && !isProUser()) { showNotice('Premium feature requires Pro subscription', 'error'); openSubModal(); return; }
         openTagModal(item.key);
       }
     });
     items.push('sep');
   } else {
     items.push({
-      icon: '⬇️', label: 'Download Image', pro: true, action: () => {
-        if (!isProUser()) { showNotice('Premium feature requires Pro subscription', 'error'); openSubModal(); return; }
+      icon: '⬇️', label: 'Save Image…', action: async () => {
+        // Save the data URL via a download anchor — fully local.
         const a = document.createElement('a');
         a.href = item.value;
         a.download = `clipstack-image-${Date.now()}.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        showNotice('Downloaded!');
-      }
-    });
-    items.push({
-      icon: '🔗', label: 'Generate Link', pro: true, action: async () => {
-        if (!isProUser()) { showNotice('Premium feature requires Pro subscription', 'error'); openSubModal(); return; }
-        
-        showNotice('Generating secure tunnel...');
-        try {
-          const url = await window.clipAPI.generateNgrokLink(item.key);
-          await window.clipAPI.copyText(url);
-          showNotice('Ngrok Link copied!');
-        } catch(e) {
-          showNotice('Tunnel failed. Check connection.', 'error');
-        }
+        showNotice('Saved!');
       }
     });
     items.push('sep');
@@ -580,7 +683,7 @@ function buildMenuItems(item, sensitive, revealed, isSnippet) {
   if (!isSnippet) {
     items.push({
       icon: '📄', label: 'Save as Snippet', pro: true, action: () => {
-        if (!isProUser()) { showNotice('Premium feature requires Pro subscription', 'error'); openSubModal(); return; }
+        if (FLAGS.PRO_UI_ENABLED && !isProUser()) { showNotice('Premium feature requires Pro subscription', 'error'); openSubModal(); return; }
         snippetKey = item.key;
         openSnippetModal();
       }
@@ -745,9 +848,28 @@ function updateBulkBar() {
   if (selectedKeys.size > 0) {
     bar.classList.remove('hidden');
     $('bulk-count').textContent = `${selectedKeys.size} selected`;
+    // Update Select All button label
+    const allItems = getFilteredItems();
+    const allSelected = allItems.length > 0 && allItems.every(i => selectedKeys.has(i.key));
+    const saBtn = $('bulk-select-all-btn');
+    if (saBtn) saBtn.textContent = allSelected ? '☐ Deselect All' : '☑ Select All';
   } else {
     bar.classList.add('hidden');
   }
+}
+
+function selectAllItems() {
+  const items = getFilteredItems();
+  const allSelected = items.length > 0 && items.every(i => selectedKeys.has(i.key));
+  if (allSelected) {
+    // Deselect all
+    selectedKeys.clear();
+  } else {
+    // Select all visible items
+    items.forEach(i => selectedKeys.add(i.key));
+  }
+  updateBulkBar();
+  renderFeedCurrent();
 }
 
 function clearMultiSelect() {
@@ -769,7 +891,7 @@ function handleKeydown(e) {
     if (!$('img-preview-modal').classList.contains('hidden')) { closeImagePreview(); return; }
     if (!$('tag-modal').classList.contains('hidden')) { closeTagModal(); return; }
     if (!$('snippet-modal').classList.contains('hidden')) { closeSnippetModal(); return; }
-    if (!$('subscription-modal').classList.contains('hidden')) { closeSubModal(); return; }
+    if (!$('subscription-modal')?.classList.contains('hidden')) { closeSubModal(); return; }
     if (!$('settings-panel').classList.contains('hidden')) { closeSettings(); return; }
     if (!$('transform-panel').classList.contains('hidden')) { hideTransformPanel(); return; }
     if (selectedKeys.size > 0) { clearMultiSelect(); return; }
@@ -800,13 +922,11 @@ function handleKeydown(e) {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (selectedKey) {
-        const item = items.find(i => i.key === selectedKey);
-        if (item && item.type === 'image' && !isProUser()) {
-          showNotice('Premium feature requires Pro subscription', 'error');
-          openSubModal();
-          return;
+        if (FLAGS.AUTO_PASTE_ENABLED) {
+          window.clipAPI.copyAndPaste(selectedKey).then(ok => { if (!ok) showNotice('Paste failed', 'error'); });
+        } else {
+          window.clipAPI.copyItem(selectedKey).then(() => showNotice('Copied — press ⌘V to paste'));
         }
-        window.clipAPI.copyAndPaste(selectedKey).then(ok => { if (!ok) showNotice('Paste failed', 'error'); });
       }
     }
   }
@@ -844,11 +964,31 @@ document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
 });
 
-// Filter chips
+// Filter button + dropdown
+const filterBtn = $('filter-btn');
+const filterDropdown = $('filter-dropdown');
+const filterBtnLabel = $('filter-btn-label');
+
+filterBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  filterDropdown.classList.toggle('open');
+  filterBtn.classList.toggle('open');
+});
+
+document.addEventListener('click', (e) => {
+  if (!filterDropdown.contains(e.target) && e.target !== filterBtn) {
+    filterDropdown.classList.remove('open');
+    filterBtn.classList.remove('open');
+  }
+});
+
 document.querySelectorAll('.chip').forEach(chip => {
   chip.addEventListener('click', () => {
     typeFilter = chip.dataset.f;
     document.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.f === typeFilter));
+    filterBtnLabel.textContent = chip.textContent.trim();
+    filterDropdown.classList.remove('open');
+    filterBtn.classList.remove('open');
     renderFeed();
   });
 });
@@ -867,14 +1007,14 @@ $('settings-panel').addEventListener('click', e => {
   if (e.target === $('settings-panel')) closeSettings();
 });
 
-// Upgrade buttons
+// Upgrade buttons (no-ops when Pro UI is disabled — buttons are hidden anyway)
 $('upgrade-btn')?.addEventListener('click', openSubModal);
 $('pro-banner-btn')?.addEventListener('click', openSubModal);
 $('manage-sub-btn')?.addEventListener('click', () => { closeSettings(); openSubModal(); });
 
 // Sub modal close
-$('sub-modal-close').addEventListener('click', closeSubModal);
-$('sub-modal-backdrop').addEventListener('click', closeSubModal);
+$('sub-modal-close')?.addEventListener('click', closeSubModal);
+$('sub-modal-backdrop')?.addEventListener('click', closeSubModal);
 
 // Image preview close
 $('img-preview-close').addEventListener('click', closeImagePreview);
@@ -939,25 +1079,6 @@ document.querySelectorAll('.tp-opt').forEach(btn => {
 });
 
 // Settings controls
-document.querySelectorAll('.theme-opt').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const theme = btn.dataset.v;
-    document.querySelectorAll('.theme-opt').forEach(b => b.classList.toggle('active', b.dataset.v === theme));
-    applyTheme(theme);
-    await window.clipAPI.updateSettings({ theme });
-  });
-});
-
-function applyTheme(theme) {
-  const body = document.body;
-  if (theme === 'dark') body.dataset.theme = 'dark';
-  else if (theme === 'light') body.dataset.theme = 'light';
-  else {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    body.dataset.theme = prefersDark ? 'dark' : 'light';
-  }
-}
-
 $('s-pause').addEventListener('change', async e => { await window.clipAPI.updateSettings({ pauseCapture: e.target.checked }); updatePauseBtn(); });
 $('s-mask').addEventListener('change', async e => { await window.clipAPI.updateSettings({ maskSensitive: e.target.checked }); });
 $('s-source').addEventListener('change', async e => { await window.clipAPI.updateSettings({ trackSource: e.target.checked }); });
@@ -1026,11 +1147,16 @@ $('excluded-list').addEventListener('click', async e => {
   }
 });
 
-// Export
-$('export-btn').addEventListener('click', async () => {
-  if (!isProUser()) { showNotice('Export requires Pro plan', 'error'); openSubModal(); return; }
+// Export — local JSON file, fully under user control. Free in v1.0.
+$('export-btn')?.addEventListener('click', async () => {
+  if (FLAGS.PRO_UI_ENABLED && !isProUser()) { showNotice('Export requires Pro plan', 'error'); openSubModal(); return; }
   await window.clipAPI.exportHistory();
   showNotice('History exported!');
+});
+
+// Privacy policy — replace this URL with the live policy before submission.
+$('privacy-policy-btn')?.addEventListener('click', () => {
+  window.clipAPI.openExternal('https://clipstack.app/privacy');
 });
 
 // Clear
@@ -1049,23 +1175,11 @@ $('bulk-delete-btn').addEventListener('click', async () => {
   showNotice('Deleted!');
 });
 $('bulk-cancel-btn').addEventListener('click', clearMultiSelect);
+$('bulk-select-all-btn')?.addEventListener('click', selectAllItems);
 
-// License activation
-$('activate-btn').addEventListener('click', async () => {
-  const key = $('license-input').value.trim();
-  if (!key) return;
-  const result = await window.clipAPI.activateLicense(key);
-  if (result?.success) {
-    showNotice('License activated! Welcome to ' + result.plan + '!');
-    closeSubModal();
-  } else {
-    showNotice('Invalid license key', 'error');
-  }
-});
-
-// Upgrade buttons (placeholder - connect to Stripe later)
-$('upgrade-pro-btn').addEventListener('click', () => { showNotice('Stripe billing coming soon! Use a license key.'); });
-$('upgrade-team-btn').addEventListener('click', () => { showNotice('Team billing coming soon!'); });
+// Subscription buttons are wired only when Pro UI is enabled (post-IAP).
+$('upgrade-pro-btn')?.addEventListener('click', () => { showNotice('Subscription coming soon'); });
+$('upgrade-team-btn')?.addEventListener('click', () => { showNotice('Team plan coming soon'); });
 
 // ── IPC LISTENERS ─────────────────────────────
 window.clipAPI.onState(newState => {
@@ -1073,7 +1187,6 @@ window.clipAPI.onState(newState => {
   updateTabCounts();
   updatePlanUI();
   updatePauseBtn();
-  applyTheme(state.settings?.theme || 'system');
   if (state.settings?.excludedApps) renderExcludedList(state.settings.excludedApps);
   renderFeedCurrent();
 });
@@ -1085,8 +1198,11 @@ window.clipAPI.onSelection(sel => {
 
 // ── INIT ──────────────────────────────────────
 async function init() {
+  // Resolve build flags first so all subsequent UI decisions reflect them.
+  try {
+    FLAGS = { ...FLAGS, ...(await window.clipAPI.getFlags()) };
+  } catch (_) {}
   state = await window.clipAPI.getState();
-  applyTheme(state.settings?.theme || 'system');
   updateTabCounts();
   updatePlanUI();
   updatePauseBtn();

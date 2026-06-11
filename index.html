@@ -8,7 +8,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ClipStack</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" />
   <link rel="stylesheet" href="style.css" />
 </head>
 
@@ -16,30 +18,179 @@
 
   <!-- ═══ ONBOARDING ═══ -->
   <div id="onboarding" class="onboarding hidden">
-    <div class="onboarding-card">
-      <div class="onboarding-logo">
+    <button id="onb-skip" class="onb-skip">Skip</button>
+
+    <!-- Step 1: Quick Start -->
+    <section class="onb-screen" data-step="1">
+      <div class="onb-logo">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <rect x="9" y="9" width="13" height="13" rx="2" />
           <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
         </svg>
       </div>
-      <h1>Welcome to ClipStack</h1>
-      <p>Your intelligent clipboard manager for professionals.</p>
-      <div class="onboarding-steps">
-        <div class="o-step">
-          <div class="o-icon">⌘⇧V</div>
-          <div><strong>Open Anywhere</strong><span>Press to open ClipStack</span></div>
+      <h1 class="onb-title">Quick Start</h1>
+      <p class="onb-sub">Set up and start using ClipStack.</p>
+
+      <div class="onb-card">
+        <div class="onb-row">
+          <div class="onb-row-text">
+            <div class="onb-row-label">Launch at login</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="onb-login" /><span class="tog-track"></span></label>
         </div>
-        <div class="o-step">
-          <div class="o-icon">↵</div>
-          <div><strong>Paste Instantly</strong><span>Click or Enter to paste</span></div>
+        <div class="onb-row">
+          <div class="onb-row-text">
+            <div class="onb-row-label">Activation shortcut</div>
+            <div class="onb-row-desc">Instantly access ClipStack in any app</div>
+          </div>
+          <div class="onb-shortcut">
+            <span id="onb-hotkey-disp" class="onb-hotkey">⌘ ⇧ V</span>
+            <button id="onb-hotkey-reset" class="onb-hotkey-reset" title="Reset to default">✕</button>
+          </div>
         </div>
-        <div class="o-step">
-          <div class="o-icon">🔍</div>
-          <div><strong>Search Clips</strong><span>Find anything instantly</span></div>
+        <div class="onb-row">
+          <div class="onb-row-text">
+            <div class="onb-row-label">Clipboard history</div>
+            <div class="onb-row-desc">Maximum number of copied items to keep</div>
+          </div>
+          <select id="onb-max-items" class="sel onb-num">
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200" selected>200</option>
+            <option value="500">500</option>
+            <option value="0">Unlimited</option>
+          </select>
         </div>
       </div>
-      <button id="onboarding-btn" class="btn-primary btn-lg">Get Started →</button>
+
+      <button id="onb-next-1" class="onb-cta">Continue</button>
+    </section>
+
+    <!-- Step 2: Advanced Rule Set -->
+    <section class="onb-screen hidden" data-step="2">
+      <div class="onb-mockup">
+        <div class="onb-mockup-chrome">
+          <span class="onb-dot onb-dot-r"></span>
+          <span class="onb-dot onb-dot-y"></span>
+          <span class="onb-dot onb-dot-g"></span>
+          <span class="onb-mockup-title">ClipStack — Excluded Apps</span>
+        </div>
+        <div class="onb-mockup-body">
+          <div class="onb-mockup-list">
+            <div class="onb-mockup-item">
+              <span class="onb-mockup-app">🔐 1Password</span><span class="onb-mockup-x">✕</span>
+            </div>
+            <div class="onb-mockup-item">
+              <span class="onb-mockup-app">🔑 Keychain Access</span><span class="onb-mockup-x">✕</span>
+            </div>
+            <div class="onb-mockup-item">
+              <span class="onb-mockup-app">💳 Banking</span><span class="onb-mockup-x">✕</span>
+            </div>
+          </div>
+          <div class="onb-mockup-input">App name (e.g. 1Password)</div>
+        </div>
+      </div>
+      <h1 class="onb-title">Advanced Rule Set</h1>
+      <p class="onb-sub">Configure which apps to exclude from clipboard capture.</p>
+    </section>
+
+    <!-- Step 3: Set up -->
+    <section class="onb-screen hidden" data-step="3">
+      <div class="onb-chips">
+        <span class="onb-chip">Pinning</span>
+        <span class="onb-chip">Tags</span>
+        <span class="onb-chip">Snippets</span>
+        <span class="onb-chip">Bulk Select</span>
+        <span class="onb-chip">Sensitive Mask</span>
+        <span class="onb-chip">Transform</span>
+        <span class="onb-chip">Filter</span>
+        <span class="onb-chip">Search</span>
+        <span class="onb-chip">Keyboard Nav</span>
+        <span class="onb-chip">Hotkey</span>
+        <span class="onb-chip">Source App</span>
+        <span class="onb-chip">Stats</span>
+        <span class="onb-chip">Export</span>
+        <span class="onb-chip">Image</span>
+        <span class="onb-chip">Link</span>
+        <span class="onb-chip">Code</span>
+        <span class="onb-chip">Auto-Paste</span>
+        <span class="onb-chip">Pause</span>
+        <span class="onb-chip">Privacy</span>
+      </div>
+      <h1 class="onb-title">Set up</h1>
+      <div class="onb-card">
+        <div class="onb-row">
+          <div class="onb-row-text">
+            <div class="onb-row-label">Pause capture</div>
+            <div class="onb-row-desc">Stop recording clipboard temporarily</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="onb-pause" /><span class="tog-track"></span></label>
+        </div>
+        <div class="onb-row">
+          <div class="onb-row-text">
+            <div class="onb-row-label">Mask sensitive data</div>
+            <div class="onb-row-desc">Hide API keys, passwords, DB URLs</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="onb-mask" checked /><span class="tog-track"></span></label>
+        </div>
+        <div class="onb-row">
+          <div class="onb-row-text">
+            <div class="onb-row-label">Track source app</div>
+            <div class="onb-row-desc">Show which app each clip came from</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="onb-source" /><span class="tog-track"></span></label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 4: Accessibility -->
+    <section class="onb-screen hidden" data-step="4">
+      <div class="onb-logo">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="9" y="9" width="13" height="13" rx="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      </div>
+      <h1 class="onb-title">Paste to Any App</h1>
+      <p class="onb-sub">To paste directly into other apps, allow ClipStack to access the Accessibility features of your Mac in System Settings.</p>
+
+      <div class="onb-mockup onb-mockup-a11y">
+        <div class="onb-mockup-chrome">
+          <span class="onb-dot onb-dot-r"></span>
+          <span class="onb-dot onb-dot-y"></span>
+          <span class="onb-dot onb-dot-g"></span>
+          <span class="onb-mockup-title">System Settings — Accessibility</span>
+        </div>
+        <div class="onb-mockup-body onb-a11y-body">
+          <label class="onb-a11y-row">
+            <span class="onb-a11y-app">🔐 1Password</span>
+            <span class="tog"><input type="checkbox" checked /><span class="tog-track"></span></span>
+          </label>
+          <label class="onb-a11y-row onb-a11y-highlight">
+            <span class="onb-a11y-app">📋 ClipStack</span>
+            <span class="tog"><input type="checkbox" checked /><span class="tog-track"></span></span>
+          </label>
+          <label class="onb-a11y-row">
+            <span class="onb-a11y-app">⌨ Terminal</span>
+            <span class="tog"><input type="checkbox" /><span class="tog-track"></span></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="onb-actions">
+        <button id="onb-later" class="btn-secondary onb-btn-later">I'll Do It Later</button>
+        <button id="onb-allow" class="btn-primary onb-btn-allow">Allow Access</button>
+      </div>
+    </section>
+
+    <button id="onb-next-arrow" class="onb-arrow hidden" aria-label="Next">→</button>
+
+    <!-- Progress dots -->
+    <div class="onb-dots">
+      <button class="onb-dot-step active" data-dot="1" aria-label="Go to onboarding step 1"></button>
+      <button class="onb-dot-step" data-dot="2" aria-label="Go to onboarding step 2"></button>
+      <button class="onb-dot-step" data-dot="3" aria-label="Go to onboarding step 3"></button>
+      <button class="onb-dot-step" data-dot="4" aria-label="Go to onboarding step 4"></button>
     </div>
   </div>
 
@@ -69,32 +220,29 @@
           <div class="plan-name">Free</div>
           <div class="plan-price">$0<span>/mo</span></div>
           <ul class="plan-features">
-            <li class="ok">50 clipboard items</li>
+            <li class="ok">100 clipboard items</li>
             <li class="ok">Text &amp; image capture</li>
-            <li class="ok">Pin items</li>
-            <li class="no">Cloud sync</li>
-            <li class="no">Snippets library</li>
-            <li class="no">Sensitive masking</li>
-            <li class="no">Text transforms</li>
+            <li class="ok">Pin &amp; bulk delete</li>
+            <li class="ok">Sensitive data masking</li>
+            <li class="ok">Search &amp; filters</li>
+            <li class="ok">Snippets (up to 10)</li>
+            <li class="ok">Local-only, private</li>
           </ul>
           <button class="plan-btn outline" disabled id="plan-free-btn">Current Plan</button>
         </div>
         <div class="plan-card plan-pro" id="plan-pro-card">
-          <div class="plan-popular">Most Popular</div>
+          <div class="plan-popular">Coming soon</div>
           <div class="plan-name">Pro</div>
           <div class="plan-price">$3<span>/mo</span></div>
           <ul class="plan-features">
             <li class="ok">Unlimited history</li>
-            <li class="ok">Cloud sync (soon)</li>
-            <li class="ok">Snippets library</li>
-            <li class="ok">Sensitive masking</li>
+            <li class="ok">Unlimited snippets</li>
             <li class="ok">Text transformations</li>
             <li class="ok">Tags &amp; collections</li>
             <li class="ok">Export history</li>
-            <li class="ok">Image downloads &amp; copy</li>
-            <li class="ok">Generate image HTTPS links</li>
+            <li class="ok">iCloud sync (soon)</li>
           </ul>
-          <button class="plan-btn pro" id="upgrade-pro-btn">Upgrade to Pro →</button>
+          <button class="plan-btn pro" id="upgrade-pro-btn">Notify Me</button>
         </div>
         <div class="plan-card plan-team" id="plan-team-card">
           <div class="plan-name">Team</div>
@@ -111,13 +259,6 @@
           <button class="plan-btn team" id="upgrade-team-btn">Upgrade to Team →</button>
         </div>
       </div>
-      <div class="license-section">
-        <div class="license-label">Have a license key?</div>
-        <div class="license-row">
-          <input type="text" id="license-input" placeholder="CLIP-XXXX-XXXX-XXXX" />
-          <button id="activate-btn" class="btn-primary">Activate</button>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -128,20 +269,6 @@
       <button class="modal-x" id="settings-close">✕</button>
     </div>
     <div class="side-panel-body">
-
-      <div class="s-section">
-        <div class="s-title">Appearance</div>
-        <div class="s-row">
-          <div class="s-info">
-            <div class="s-label">Theme</div>
-          </div>
-          <div class="theme-seg" id="theme-seg">
-            <button class="theme-opt" data-v="light">Light</button>
-            <button class="theme-opt" data-v="dark">Dark</button>
-            <button class="theme-opt" data-v="system">Auto</button>
-          </div>
-        </div>
-      </div>
 
       <div class="s-section">
         <div class="s-title">Keyboard Shortcut</div>
@@ -246,10 +373,20 @@
         </div>
       </div>
 
-      <div class="s-section">
+      <div class="s-section" id="settings-sub-section">
         <div class="s-title">Subscription</div>
         <div id="sub-info-block" class="sub-info-block"></div>
         <button id="manage-sub-btn" class="btn-primary" style="width:100%;margin-top:12px;">Manage Subscription</button>
+      </div>
+
+      <div class="s-section">
+        <div class="s-title">Privacy</div>
+        <div class="s-desc" style="margin-bottom:8px">
+          ClipStack stores your clipboard history only on this Mac. It never sends your clipboard data to any server.
+        </div>
+        <div class="s-actions">
+          <button id="privacy-policy-btn" class="btn-secondary">Privacy Policy</button>
+        </div>
       </div>
 
     </div>
@@ -306,7 +443,8 @@
 
     <!-- Header -->
     <header class="app-header">
-      <div class="hdr-left">
+      <div class="hdr-left"></div>
+      <div class="hdr-center">
         <div class="app-logo">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="9" y="9" width="13" height="13" rx="2" />
@@ -316,25 +454,45 @@
         <span class="app-name">ClipStack</span>
         <span id="plan-badge" class="plan-badge">FREE</span>
       </div>
-      <div class="hdr-search">
-        <div class="search-wrap">
-          <svg class="search-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="2.5">
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
-          <input type="text" id="search-input" placeholder="Search clips..." autocomplete="off" spellcheck="false" />
-          <button id="search-clear" class="search-clear hidden">✕</button>
-        </div>
-      </div>
       <div class="hdr-right">
+        <button id="upgrade-btn" class="upgrade-btn">⚡ Pro</button>
+      </div>
+    </header>
+
+    <!-- Tabs -->
+    <div class="tab-bar">
+      <div class="tab-bar-left">
+        <button class="tab" data-tab="history" id="tab-history">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+            <path d="M12 7v5l4 2" />
+          </svg>
+          History <span id="hist-count" class="tab-cnt">0</span>
+        </button>
+        <button class="tab" data-tab="snippets" id="tab-snippets">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+            <polyline points="14 2 14 8 20 8" />
+          </svg>
+          Snippets <span id="snip-count" class="tab-cnt">0</span>
+        </button>
+        <button class="tab" data-tab="stats" id="tab-stats">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="20" x2="18" y2="10" />
+            <line x1="12" y1="20" x2="12" y2="4" />
+            <line x1="6" y1="20" x2="6" y2="14" />
+          </svg>
+          Stats
+        </button>
+      </div>
+      <div class="tab-bar-right">
         <button id="pause-btn" class="icon-btn" title="Pause Capture">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <rect x="6" y="4" width="4" height="16" />
             <rect x="14" y="4" width="4" height="16" />
           </svg>
         </button>
-        <button id="upgrade-btn" class="upgrade-btn">⚡ Pro</button>
         <button id="settings-btn" class="icon-btn" title="Settings">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3" />
@@ -343,43 +501,38 @@
           </svg>
         </button>
       </div>
-    </header>
-
-    <!-- Tabs -->
-    <div class="tab-bar">
-      <button class="tab" data-tab="history" id="tab-history">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-          <path d="M3 3v5h5" />
-          <path d="M12 7v5l4 2" />
-        </svg>
-        History <span id="hist-count" class="tab-cnt">0</span>
-      </button>
-      <button class="tab" data-tab="snippets" id="tab-snippets">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-          <polyline points="14 2 14 8 20 8" />
-        </svg>
-        Snippets <span id="snip-count" class="tab-cnt">0</span>
-      </button>
-      <button class="tab" data-tab="stats" id="tab-stats">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <line x1="18" y1="20" x2="18" y2="10" />
-          <line x1="12" y1="20" x2="12" y2="4" />
-          <line x1="6" y1="20" x2="6" y2="14" />
-        </svg>
-        Stats
-      </button>
     </div>
 
-    <!-- Filter Bar -->
+    <!-- Search + Filter Row -->
     <div class="filter-bar" id="filter-bar">
-      <button class="chip active" data-f="all">All</button>
-      <button class="chip" data-f="text">📝 Text</button>
-      <button class="chip" data-f="code">💻 Code</button>
-      <button class="chip" data-f="link">🔗 Link</button>
-      <button class="chip" data-f="image">🖼 Image</button>
-      <button class="chip" data-f="sensitive">🔒 Sensitive</button>
+      <div class="search-wrap">
+        <svg class="search-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2.5">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.35-4.35" />
+        </svg>
+        <input type="text" id="search-input" placeholder="Search clips..." autocomplete="off" spellcheck="false" />
+        <button id="search-clear" class="search-clear hidden">✕</button>
+      </div>
+      <div class="filter-menu-wrap">
+        <button id="filter-btn" class="filter-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+          </svg>
+          <span id="filter-btn-label">All</span>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+        <div id="filter-dropdown" class="filter-dropdown">
+          <button class="chip active" data-f="all">All</button>
+          <button class="chip" data-f="text">📝 Text</button>
+          <button class="chip" data-f="code">💻 Code</button>
+          <button class="chip" data-f="link">🔗 Link</button>
+          <button class="chip" data-f="image">🖼 Image</button>
+          <button class="chip" data-f="sensitive">🔒 Sensitive</button>
+        </div>
+      </div>
     </div>
 
     <!-- Upgrade Banner -->
@@ -392,6 +545,7 @@
     <div id="bulk-bar" class="bulk-bar hidden">
       <span id="bulk-count">0 selected</span>
       <div style="display:flex;gap:8px">
+        <button id="bulk-select-all-btn" class="btn-secondary btn-sm">☑ Select All</button>
         <button id="bulk-delete-btn" class="btn-danger btn-sm">Delete</button>
         <button id="bulk-cancel-btn" class="btn-ghost btn-sm">Cancel</button>
       </div>

@@ -1,12 +1,11 @@
-const { app, BrowserWindow, globalShortcut, clipboard, ipcMain, nativeImage, Tray, Menu, nativeTheme, net, systemPreferences, shell, dialog } = require("electron");
-const http = require("http");
-const ngrok = require("@ngrok/ngrok");
+const { app, BrowserWindow, globalShortcut, clipboard, ipcMain, nativeImage, Tray, Menu, systemPreferences, shell, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const Store = require("electron-store");
 const crypto = require("crypto");
+const flags = require("./config");
 
-const DEFAULT_MAX_ITEMS = 200;
+const DEFAULT_MAX_ITEMS = flags.FREE_HISTORY_LIMIT;
 const POLL_MS = 300;
 
 const DEFAULT_HOTKEY = "CommandOrControl+Shift+V";
@@ -17,13 +16,28 @@ const store = new Store({
     items: [],
     pinnedKeys: [],
     settings: {
-      autoPasteOnCmdEnter: true,
+      autoPasteOnCmdEnter: flags.AUTO_PASTE_ENABLED,
       pauseCapture: false,
-      theme: "system",
-      hotkey: DEFAULT_HOTKEY
+      hotkey: DEFAULT_HOTKEY,
+      maxItems: flags.FREE_HISTORY_LIMIT,
+      maskSensitive: true,
+      trackSource: false,
+      launchAtLogin: false,
     }
   }
 });
+
+// Strip any pre-existing demo subscription state — never trust persisted
+// "pro" flags from older builds since the demo activation path is gone.
+if (!flags.PRO_UI_ENABLED) {
+  try { store.delete("subscription"); } catch (_) {}
+}
+
+// Dev: `--reset-onboarding` clears the persisted onboarding flag so the
+// next launch replays the flow.
+if (process.argv.includes("--reset-onboarding")) {
+  try { store.delete("hasOnboarded"); } catch (_) {}
+}
 
 let win = null;
 let lastFormats = "";
@@ -34,9 +48,6 @@ let selectedKey = null;
 let previousApp = null;
 let previousAppBundle = null;
 let hotkeyBusy = false;
-
-let imageServer = null;
-let ngrokUrl = null;
 
 // Our own bundle ID (from package.json build.appId)
 const OWN_BUNDLE_ID = "com.syed.clipboard";
@@ -103,9 +114,24 @@ function getState() {
   const pinnedKeys = store.get("pinnedKeys") || [];
   const snippets = store.get("snippets") || [];
   const settings = store.get("settings") || {};
-  const subscription = store.get("subscription") || { plan: "free" };
+  const subscription = flags.PRO_UI_ENABLED
+    ? (store.get("subscription") || { plan: "free" })
+    : { plan: "free" };
   const hasOnboarded = store.get("hasOnboarded") || false;
-  return { items, pinnedKeys, snippets, settings, subscription, hasOnboarded };
+  return { items, pinnedKeys, snippets, settings, subscription, hasOnboarded, flags: getRendererFlags() };
+}
+
+function getRendererFlags() {
+  return {
+    PRO_UI_ENABLED: flags.PRO_UI_ENABLED,
+    PRO_FEATURES_UNLOCKED: flags.PRO_FEATURES_UNLOCKED,
+    SHARING_ENABLED: flags.SHARING_ENABLED,
+    AUTO_PASTE_ENABLED: flags.AUTO_PASTE_ENABLED,
+    IS_MAS_BUILD: flags.IS_MAS_BUILD,
+    FREE_HISTORY_LIMIT: flags.FREE_HISTORY_LIMIT,
+    FREE_SNIPPET_LIMIT: flags.FREE_SNIPPET_LIMIT,
+    FREE_TAG_LIMIT_PER_ITEM: flags.FREE_TAG_LIMIT_PER_ITEM,
+  };
 }
 
 function getOrderedItems() {
@@ -136,7 +162,6 @@ function sendState() {
   if (!rendererReady) return;
 
   const state = getState();
-  console.log("➡️ sendState items:", state.items.length);
   win.webContents.send("state:update", state);
 }
 
@@ -146,9 +171,12 @@ function createWindow() {
     width: 620,
     height: 800,
     show: false,
-    alwaysOnTop: true,
+    alwaysOnTop: false,
     focusable: true,
     acceptFirstMouse: true,
+    backgroundColor: "#0C1019",
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: { x: 16, y: 18 },
     icon: path.join(__dirname, "build", "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -161,9 +189,7 @@ function createWindow() {
 
   win.webContents.on("did-finish-load", () => {
     rendererReady = true;
-    console.log("✅ Renderer ready");
     sendState();
-
   });
 
 
@@ -178,6 +204,7 @@ function createWindow() {
 
 async function capturePreviousApp() {
   if (process.platform !== "darwin") return;
+  if (!flags.SOURCE_APP_PROBE_ENABLED) return;
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(), 1000);
     const script = [
@@ -194,7 +221,6 @@ async function capturePreviousApp() {
         const parts = stdout.trim().split("|");
         previousApp = parts[0]?.trim() || null;
         previousAppBundle = parts[1]?.trim() || null;
-        console.log(`📍 Previous app: "${previousApp}" [${previousAppBundle}]`);
       }
       resolve();
     });
@@ -205,11 +231,9 @@ async function showWindow() {
   if (!win) return;
   if (!win.isVisible()) {
     win.show();
-    win.setAlwaysOnTop(true, "status");
     win.focus();
   }
-  const ordered = getOrderedItems();
-  setSelection(ordered[0] ? ordered[0].key : null);
+  setSelection(null);
   sendState();
 }
 
@@ -248,21 +272,18 @@ function registerHotkey() {
   const settings = store.get("settings") || {};
   const hotkey = settings.hotkey || DEFAULT_HOTKEY;
 
-  const ok1 = globalShortcut.register(hotkey, handleHotkey);
+  globalShortcut.register(hotkey, handleHotkey);
   registeredHotkeys.push(hotkey);
-  console.log(`Registered primary hotkey: ${hotkey} =>`, ok1);
 
   // Also register Control+Shift+V as fallback if the primary isn't already that
   if (hotkey !== "Control+Shift+V" && hotkey !== "CommandOrControl+Shift+V") {
     try {
-      const ok2 = globalShortcut.register("Control+Shift+V", handleHotkey);
+      globalShortcut.register("Control+Shift+V", handleHotkey);
       registeredHotkeys.push("Control+Shift+V");
-      console.log("Registered fallback Control+Shift+V =>", ok2);
     } catch (_) {}
   } else {
-    // Register both variants for default shortcut
     try {
-      const ok2 = globalShortcut.register("Control+Shift+V", handleHotkey);
+      globalShortcut.register("Control+Shift+V", handleHotkey);
       registeredHotkeys.push("Control+Shift+V");
     } catch (_) {}
   }
@@ -276,7 +297,7 @@ function registerHotkey() {
   });
   registeredHotkeys.push("CommandOrControl+Shift+Up");
 
-  const okDown = globalShortcut.register("CommandOrControl+Shift+Down", () => {
+  globalShortcut.register("CommandOrControl+Shift+Down", () => {
     if (!win || !win.isVisible()) return;
     const ordered = getOrderedItems();
     if (!ordered.length) return;
@@ -284,35 +305,21 @@ function registerHotkey() {
     setSelection(ordered[Math.min(ordered.length - 1, idx + 1)].key);
   });
   registeredHotkeys.push("CommandOrControl+Shift+Down");
-
-  console.log("Registered hotkeys:", registeredHotkeys);
 }
 
 
 
 function startClipboardPolling() {
-  console.log("✅ Clipboard polling started");
-
   if (pollTimer) clearInterval(pollTimer);
 
-  let debugCounter = 0;
   pollTimer = setInterval(() => {
-    // Check if capture is paused
     const settings = store.get("settings") || {};
     if (settings.pauseCapture) return;
 
-    // Check available formats
     const formats = clipboard.availableFormats();
     const formatsStr = formats.join(", ");
+    if (formatsStr !== lastFormats) lastFormats = formatsStr;
 
-    // Debug: log when clipboard formats change
-    debugCounter++;
-    if (formatsStr !== lastFormats) {
-      console.log(`📋 Clipboard changed! Formats: ${formatsStr || "(empty)"}`);
-      lastFormats = formatsStr;
-    }
-
-    // Create a combined hash of all clipboard content to detect changes
     const text = clipboard.readText() || "";
     const image = clipboard.readImage();
     const imageEmpty = image.isEmpty();
@@ -321,14 +328,16 @@ function startClipboardPolling() {
     let imageHash = "";
     let imageDataUrl = null;
 
-    // Get image data if present
+    // Native image — capped at MAX_IMAGE_BYTES so the local store doesn't bloat.
     if (!imageEmpty && imageSize.width > 10 && imageSize.height > 10) {
       const pngBuffer = image.toPNG();
-      imageHash = crypto.createHash("sha1").update(pngBuffer).digest("hex");
-      imageDataUrl = `data:image/png;base64,${pngBuffer.toString("base64")}`;
+      if (pngBuffer.length <= flags.MAX_IMAGE_BYTES) {
+        imageHash = crypto.createHash("sha1").update(pngBuffer).digest("hex");
+        imageDataUrl = `data:image/png;base64,${pngBuffer.toString("base64")}`;
+      }
     }
 
-    // Check for image in HTML (Google Docs, etc.)
+    // HTML embedded base64 — accept these (still local), skip remote URLs.
     let htmlImageDataUrl = null;
     let htmlImageHash = "";
     if (!imageDataUrl && formats.includes("text/html")) {
@@ -336,84 +345,42 @@ function startClipboardPolling() {
         const html = clipboard.readHTML();
         const base64Match = html.match(/data:image\/(png|jpeg|jpg|gif|webp);base64,([A-Za-z0-9+/=]+)/);
         if (base64Match) {
-          const mimeType = base64Match[1];
           const base64Data = base64Match[2];
-          htmlImageDataUrl = `data:image/${mimeType};base64,${base64Data}`;
-          htmlImageHash = crypto.createHash("sha1").update(base64Data).digest("hex");
-        } else {
-          // Check for image URL
-          const imgSrcMatch = html.match(/<img[^>]+src=["']([^"']+)["']/i);
-          if (imgSrcMatch && imgSrcMatch[1] && !imgSrcMatch[1].startsWith("data:")) {
-            htmlImageHash = crypto.createHash("sha1").update(imgSrcMatch[1]).digest("hex");
+          if (base64Data.length * 0.75 <= flags.MAX_IMAGE_BYTES) {
+            htmlImageDataUrl = `data:image/${base64Match[1]};base64,${base64Data}`;
+            htmlImageHash = crypto.createHash("sha1").update(base64Data).digest("hex");
           }
         }
-      } catch (err) {
-        // Ignore HTML parsing errors
-      }
+      } catch (_) {}
     }
 
-    // Combine all content into a single hash to prevent infinite loops
     const combinedHash = crypto.createHash("sha1")
       .update(text)
       .update(imageHash || htmlImageHash || "")
       .digest("hex");
 
-    // Skip if nothing changed
-    if (combinedHash === lastClipboardHash) {
-      return;
-    }
-
-    console.log(`🔄 New clipboard content detected`);
+    if (combinedHash === lastClipboardHash) return;
     lastClipboardHash = combinedHash;
 
-    // Determine what to capture
     const hasImage = imageDataUrl || htmlImageDataUrl;
     const hasText = text && text.trim().length > 0;
 
-    // If we have both image and text, save them as separate items
     if (hasImage && hasText) {
-      console.log(`📋 Clipboard has both image and text`);
-
-      // Save image
       const finalImageUrl = imageDataUrl || htmlImageDataUrl;
-      if (finalImageUrl) {
-        console.log(`🖼️ Saving image: ${imageSize.width}x${imageSize.height}`);
-        upsertImageItem(finalImageUrl);
-      }
-
-      // Save text
-      console.log(`📝 Saving text: ${text.slice(0, 60)}...`);
+      if (finalImageUrl) upsertImageItem(finalImageUrl);
       upsertItem(text);
       return;
     }
 
-    // Just image
     if (hasImage) {
       const finalImageUrl = imageDataUrl || htmlImageDataUrl;
       if (finalImageUrl) {
-        console.log(`🖼️ New clipboard image: ${imageSize.width}x${imageSize.height}`);
         upsertImageItem(finalImageUrl);
         return;
       }
     }
 
-    // Check for image URL in HTML that needs fetching
-    if (!hasImage && formats.includes("text/html")) {
-      try {
-        const html = clipboard.readHTML();
-        const imgSrcMatch = html.match(/<img[^>]+src=["']([^"']+)["']/i);
-        if (imgSrcMatch && imgSrcMatch[1] && !imgSrcMatch[1].startsWith("data:")) {
-          const imgUrl = imgSrcMatch[1];
-          console.log(`🌐 Found image URL in HTML: ${imgUrl}`);
-          fetchImageFromUrl(imgUrl);
-          // Don't return - also check for text
-        }
-      } catch (err) {
-        // Ignore
-      }
-    }
-
-    // Check for image file from Finder (macOS)
+    // Image file dragged in from Finder — local file, no network.
     if (process.platform === "darwin" && formats.includes("public.file-url")) {
       try {
         const fileUrl = clipboard.read("public.file-url");
@@ -428,27 +395,23 @@ function startClipboardPolling() {
               const size = img.getSize();
               if (size.width > 10 && size.height > 10) {
                 const pngBuffer = img.toPNG();
-                const fileImageUrl = `data:image/png;base64,${pngBuffer.toString("base64")}`;
-                console.log(`🖼️ New image file: ${filePath} (${size.width}x${size.height})`);
-                upsertImageItem(fileImageUrl);
-                return;
+                if (pngBuffer.length <= flags.MAX_IMAGE_BYTES) {
+                  const fileImageUrl = `data:image/png;base64,${pngBuffer.toString("base64")}`;
+                  upsertImageItem(fileImageUrl);
+                  return;
+                }
               }
             }
           }
         }
-      } catch (err) {
-        console.error("Error reading file from clipboard:", err);
-      }
+      } catch (_) {}
     }
 
-    // Just text
     if (hasText) {
-      console.log(`📋 New clipboard text: ${text.slice(0, 60)}`);
       upsertItem(text);
       return;
     }
   }, POLL_MS);
-
 }
 
 function isExcludedApp(appName) {
@@ -466,10 +429,7 @@ function getMaxItems() {
 function upsertItem(valueRaw) {
   const value = normalizeText(valueRaw).trimEnd();
   if (!value) return;
-  if (isExcludedApp(previousApp)) {
-    console.log("Skipping capture from excluded app:", previousApp);
-    return;
-  }
+  if (isExcludedApp(previousApp)) return;
 
   const now = Date.now();
   const key = uniqueKey(value, now);
@@ -504,61 +464,10 @@ function isSensitiveServer(value) {
     /password\s*[=:]\s*\S+/i,
     /secret\s*[=:]\s*\S+/i,
     /api[_-]?key\s*[=:]\s*\S+/i,
+    // DB / broker / queue connection URLs with embedded credentials
+    /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|amqps):\/\/[^\s:]+:[^\s@]+@/i,
   ];
   return patterns.some(re => re.test(value));
-}
-
-async function fetchImageFromUrl(url) {
-  try {
-    // Handle protocol-relative URLs
-    if (url.startsWith("//")) {
-      url = "https:" + url;
-    }
-
-    console.log(`⬇️ Fetching image from: ${url}`);
-
-    const request = net.request(url);
-    const chunks = [];
-
-    request.on("response", (response) => {
-      const contentType = response.headers["content-type"];
-      if (!contentType || !contentType[0].startsWith("image/")) {
-        console.log(`❌ Not an image: ${contentType}`);
-        return;
-      }
-
-      response.on("data", (chunk) => {
-        chunks.push(chunk);
-      });
-
-      response.on("end", () => {
-        try {
-          const buffer = Buffer.concat(chunks);
-          const img = nativeImage.createFromBuffer(buffer);
-
-          if (!img.isEmpty()) {
-            const size = img.getSize();
-            if (size.width > 10 && size.height > 10) {
-              const pngBuffer = img.toPNG();
-              const dataUrl = `data:image/png;base64,${pngBuffer.toString("base64")}`;
-              console.log(`✅ Fetched image: ${size.width}x${size.height}`);
-              upsertImageItem(dataUrl);
-            }
-          }
-        } catch (err) {
-          console.error("Error processing fetched image:", err);
-        }
-      });
-    });
-
-    request.on("error", (err) => {
-      console.error("Error fetching image:", err);
-    });
-
-    request.end();
-  } catch (err) {
-    console.error("Error in fetchImageFromUrl:", err);
-  }
 }
 
 function upsertImageItem(dataUrl) {
@@ -629,30 +538,26 @@ ipcMain.handle("item:copyAndPaste", async (_e, key) => {
   if (item.type === "image") {
     try {
       const img = nativeImage.createFromDataURL(item.value);
-      if (img.isEmpty()) {
-        console.error("Failed to create image from data URL");
-        return false;
-      }
+      if (img.isEmpty()) return false;
       clipboard.clear();
       clipboard.writeImage(img);
-      // Update tracking to prevent re-capture
       const pngBuffer = img.toPNG();
       const imageHash = crypto.createHash("sha1").update(pngBuffer).digest("hex");
       lastClipboardHash = crypto.createHash("sha1").update("").update(imageHash).digest("hex");
-      console.log("✅ Image copied to clipboard");
-    } catch (err) {
-      console.error("Error copying image:", err);
+    } catch (_) {
       return false;
     }
   } else {
     clipboard.writeText(item.value);
-    // Update tracking to prevent re-capture
     lastClipboardHash = crypto.createHash("sha1").update(item.value).update("").digest("hex");
   }
   hideWindow();
 
+  // Sandboxed (MAS) builds can't synthesize keystrokes to other apps.
+  // Just copy and let the user press ⌘V themselves.
+  if (!flags.AUTO_PASTE_ENABLED) return true;
+
   // Give the window time to fully hide before activating the target app.
-  // Without this, Cmd+V fires while ClipStack still owns the focus.
   await new Promise((r) => setTimeout(r, 220));
 
   if (process.platform === "darwin") {
@@ -661,15 +566,10 @@ ipcMain.handle("item:copyAndPaste", async (_e, key) => {
     // VS Code = com.microsoft.VSCode, Antigravity has its own ID, etc.
     // This correctly handles ALL Electron-based apps without false positives.
     const isSelf = !previousApp
-      || previousAppBundle === OWN_BUNDLE_ID     // matched by bundle ID (reliable)
-      || (!previousAppBundle && previousApp === app.getName()); // fallback name match
+      || previousAppBundle === OWN_BUNDLE_ID
+      || (!previousAppBundle && previousApp === app.getName());
 
-    if (isSelf) {
-      console.log("Skipping — previousApp is self:", previousApp, previousAppBundle);
-      return false; // nothing to paste to
-    }
-
-    console.log("Pasting to app:", previousApp, "[", previousAppBundle, "]");
+    if (isSelf) return false;
 
     // ── Universal Hardware Paste ──────────────────────────────────────────
     // Chromium/Electron-based editors (VS Code, Cursor, Antigravity) often 
@@ -713,24 +613,17 @@ ipcMain.handle("item:copy", async (_e, key) => {
   if (item.type === "image") {
     try {
       const img = nativeImage.createFromDataURL(item.value);
-      if (img.isEmpty()) {
-        console.error("Failed to create image from data URL");
-        return false;
-      }
+      if (img.isEmpty()) return false;
       clipboard.clear();
       clipboard.writeImage(img);
-      // Update tracking to prevent re-capture
       const pngBuffer = img.toPNG();
       const imageHash = crypto.createHash("sha1").update(pngBuffer).digest("hex");
       lastClipboardHash = crypto.createHash("sha1").update("").update(imageHash).digest("hex");
-      console.log("✅ Image copied to clipboard");
-    } catch (err) {
-      console.error("Error copying image:", err);
+    } catch (_) {
       return false;
     }
   } else {
     clipboard.writeText(item.value);
-    // Update tracking to prevent re-capture
     lastClipboardHash = crypto.createHash("sha1").update(item.value).update("").digest("hex");
   }
   return true;
@@ -747,10 +640,6 @@ ipcMain.handle("settings:update", (_e, patch) => {
   const settings = store.get("settings") || {};
   const next = { ...settings, ...patch };
   store.set("settings", next);
-
-  if (next.theme === "light") nativeTheme.themeSource = "light";
-  else if (next.theme === "dark") nativeTheme.themeSource = "dark";
-  else nativeTheme.themeSource = "system";
 
   sendState();
   return next;
@@ -882,21 +771,13 @@ ipcMain.handle("stats:get", () => {
   };
 });
 
-const LICENSE_KEYS = {
-  "CLIPSTACK-PRO-DEMO": "pro",
-  "CLIPSTACK-TEAM-DEMO": "team",
-};
-
-ipcMain.handle("subscription:activate", (_e, key) => {
-  const plan = LICENSE_KEYS[key.trim().toUpperCase()];
-  if (!plan) return { success: false };
-  store.set("subscription", { plan, activatedAt: Date.now(), expiresAt: null });
-  sendState();
-  return { success: true, plan };
-});
-
 ipcMain.handle("app:setOnboarded", () => {
   store.set("hasOnboarded", true);
+  return true;
+});
+
+ipcMain.handle("app:resetOnboarding", () => {
+  store.delete("hasOnboarded");
   return true;
 });
 
@@ -906,88 +787,53 @@ ipcMain.handle("app:setLoginItem", (_e, enabled) => {
 });
 
 ipcMain.handle("app:openExternal", (_e, url) => {
+  // Only allow http/https schemes — defense against shell.openExternal abuse.
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  } catch (_) {
+    return false;
+  }
   shell.openExternal(url);
   return true;
 });
 
-async function ensureImageServer() {
-  if (imageServer) return imageServer.address().port;
+ipcMain.handle("app:getFlags", () => getRendererFlags());
 
-  imageServer = http.createServer((req, res) => {
-    const parts = req.url.split("/");
-    const key = parts[parts.length - 1];
-
-    if (req.url.startsWith("/image/")) {
-      const items = store.get("items") || [];
-      const item = items.find(i => i.key === key && i.type === "image");
-
-      if (item) {
-        const base64Data = item.value.replace(/^data:image\/\w+;base64,/, "");
-        const buffer = Buffer.from(base64Data, "base64");
-        res.writeHead(200, {
-          "Content-Type": "image/png",
-          "Content-Length": buffer.length,
-          "Cache-Control": "public, max-age=31536000"
-        });
-        res.end(buffer);
-        return;
-      }
-    }
-
-    res.writeHead(404);
-    res.end();
-  });
-
-  return new Promise((resolve) => {
-    imageServer.listen(0, "127.0.0.1", () => {
-      resolve(imageServer.address().port);
-    });
-  });
-}
-
-ipcMain.handle("item:generateNgrokLink", async (_e, key) => {
-  try {
-    const port = await ensureImageServer();
-
-    if (!ngrokUrl) {
-      const token = "34e0UOlrpogRpptsdqPquzp3YxQ_3EpLgcJWVpHhKKnARANJa";
-      
-      const listener = await ngrok.forward({
-        addr: port,
-        authtoken: token,
-        schemes: ["https"],
-        metadata: "ClipStack Tunnel"
-      });
-      
-      ngrokUrl = listener.url();
-    }
-
-    return `${ngrokUrl}/image/${key}`;
-  } catch (err) {
-    console.error("Ngrok Error:", err);
-    throw err;
-  }
+ipcMain.handle("app:openA11ySettings", () => {
+  if (process.platform !== "darwin") return false;
+  shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
+  return true;
 });
+
+function pruneOldItems() {
+  if (!flags.HISTORY_RETENTION_DAYS) return;
+  const cutoff = Date.now() - flags.HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const items = store.get("items") || [];
+  const pinned = new Set(store.get("pinnedKeys") || []);
+  const kept = items.filter(i => pinned.has(i.key) || (i.ts || 0) >= cutoff);
+  if (kept.length !== items.length) store.set("items", kept);
+}
 
 // ---- App lifecycle ----
 app.whenReady().then(async () => {
-
-  if (process.platform === "darwin") {
-    const isTrusted = systemPreferences.isTrustedAccessibilityClient(true);
-    console.log("Accessibility Trusted:", isTrusted);
-    if (!isTrusted) {
-      console.log("⚠️ App not trusted for Accessibility. Redirection to System Settings might be required.");
-    }
+  // Don't auto-prompt for Accessibility on launch — only when the user
+  // first triggers a feature that needs it. Passing `false` here just reads
+  // the current trust state without showing a prompt.
+  if (process.platform === "darwin" && flags.AUTO_PASTE_ENABLED) {
+    systemPreferences.isTrustedAccessibilityClient(false);
   }
 
+  // Set dock icon in dev mode — packaged builds use build/icon.icns instead.
+  if (process.platform === "darwin" && app.dock && !app.isPackaged) {
+    try { app.dock.setIcon(path.join(__dirname, "build", "icon.png")); } catch (_) {}
+  }
+
+  pruneOldItems();
   createWindow();
   registerHotkey();
   createTray();
   startClipboardPolling();
-
-  // Apply theme
-  const { settings } = getState();
-  nativeTheme.themeSource = settings.theme || "system";
 });
 
 app.on("before-quit", () => {

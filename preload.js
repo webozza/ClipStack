@@ -6,6 +6,9 @@ contextBridge.exposeInMainWorld("clipAPI", {
   onState: (cb) => ipcRenderer.on("state:update", (_e, s) => cb(s)),
   onSelection: (cb) => ipcRenderer.on("selection:update", (_e, sel) => cb(sel)),
 
+  // Build / feature flags
+  getFlags: () => ipcRenderer.invoke("app:getFlags"),
+
   // History
   clearHistory: () => ipcRenderer.invoke("history:clear"),
 
@@ -28,23 +31,17 @@ contextBridge.exposeInMainWorld("clipAPI", {
   togglePause: () => ipcRenderer.invoke("capture:togglePause"),
   setLoginItem: (enabled) => ipcRenderer.invoke("app:setLoginItem", enabled),
 
-  // Subscription
-  activateLicense: (key) => ipcRenderer.invoke("subscription:activate", key),
-
   // Onboarding
   setOnboarded: () => ipcRenderer.invoke("app:setOnboarded"),
+  resetOnboarding: () => ipcRenderer.invoke("app:resetOnboarding"),
 
   // Export
   exportHistory: () => ipcRenderer.invoke("history:export"),
 
   // System
   openExternal: (url) => ipcRenderer.invoke("app:openExternal", url),
+  openA11ySettings: () => ipcRenderer.invoke("app:openA11ySettings"),
 
   // Stats
   getStats: () => ipcRenderer.invoke("stats:get"),
-
-  // Ngrok
-  generateNgrokLink: (key) => ipcRenderer.invoke("item:generateNgrokLink", key),
 });
-
-
